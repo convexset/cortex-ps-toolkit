@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "presets": {
+    "case_resolution": {
+      "name": "Case Resolution",
+      "query": "dataset = cases\n| filter xdm.case.status_progress = ENUM.RESOLVED\n| filter xdm.case.name contains \"Case Name Part Here\"\n| comp earliest(_insert_time) as create_time, latest(resolution_time) as resolution_time, latest(xdm.case.status_progress) as xdm.case.status_progress by xdm.case.id\n| alter resolution_time = to_timestamp(resolution_time, \"MILLIS\")\n| alter duration = timestamp_diff(resolution_time, create_time, \"MINUTE\")\n| limit 100000",
+      "timeframe": "172800000"
+    },
+    "issue_resolution": {
+      "name": "Issue Resolution",
+      "query": "dataset = issues\n| filter xdm.issue.name contains \"Issue Name Part Here\"\n| filter xdm.issue.resolution_timer != null\n| filter json_extract_scalar(xdm.issue.resolution_timer, \"$.runStatus\") = \"ended\"\n| alter start_date = json_extract_scalar(xdm.issue.resolution_timer, \"$.startDate\")\n| alter end_date = json_extract_scalar(xdm.issue.resolution_timer, \"$.endDate\")\n| alter create_time = parse_timestamp(\"%Y-%m-%d %H:%M:%S\", start_date)\n| alter resolution_time = parse_timestamp(\"%Y-%m-%d %H:%M:%S\", end_date)\n| alter duration = divide(to_integer(json_extract_scalar(xdm.issue.resolution_timer, \"$.totalDuration\")), 60)\n| fields xdm.issue.id, create_time, resolution_time, duration, xdm.issue.status.progress",
+      "timeframe": "172800000"
+    },
+    "playbook_run_performance_rollup": {
+      "name": "Playbook Run Performance",
+      "query": "dataset = playbook_runs\n| alter xdm.issue.id = to_integer(entity_id)\n| join type=inner (\n    dataset = issues\n    | filter xdm.issue.name contains \"Issue Name Part Here\"\n  ) as issue_link xdm.issue.id = to_integer(issue_link.xdm.issue.id)\n| alter net_duration_sec = divide(to_integer(net_duration), 1000)\n| alter run_time_sec = divide(to_integer(run_time), 1000)\n| comp count() as run_count,\n       count_distinct(xdm.issue.id) as issue_count,\n       sum(if(playbook_status = \"failed\", 1, 0)) as failed_count,\n       sum(if(playbook_status = \"completed\", 1, 0)) as completed_count,\n       avg(net_duration_sec) as avg_net_duration_sec,\n       median(net_duration_sec) as median_net_duration_sec,\n       min(net_duration_sec) as min_net_duration_sec,\n       max(net_duration_sec) as max_net_duration_sec,\n       avg(run_time_sec) as avg_run_time_sec,\n       median(run_time_sec) as median_run_time_sec,\n       min(run_time_sec) as min_run_time_sec,\n       max(run_time_sec) as max_run_time_sec\n  by playbook_name, playbook_id, entity_trigger_type, is_sub_playbook, parent_playbooks\n| alter failure_rate = divide(failed_count, run_count)\n| sort desc failure_rate, desc avg_net_duration_sec",
+      "timeframe": "172800000"
+    },
+    "playbook_task_performance_rollup": {
+      "name": "Playbook Task Performance",
+      "query": "dataset = playbook_tasks\n| alter xdm.issue.id = to_integer(entity_id)\n| join type=inner (\n    dataset = issues\n    | filter xdm.issue.name contains \"Issue Name Part Here\"\n  ) as issue_link xdm.issue.id = to_integer(issue_link.xdm.issue.id)\n| alter duration_sec = divide(to_integer(duration), 1000)\n| alter retry_count = to_integer(retry_count)\n| alter size = to_integer(size)\n| comp count() as task_run_count,\n       count_distinct(xdm.issue.id) as issue_count,\n       sum(if(task_status = \"Error\", 1, 0)) as error_count,\n       sum(if(task_status = \"Completed\", 1, 0)) as completed_count,\n       avg(duration_sec) as avg_duration_sec,\n       median(duration_sec) as median_duration_sec,\n       min(duration_sec) as min_duration_sec,\n       max(duration_sec) as max_duration_sec,\n       avg(retry_count) as avg_retry_count,\n       max(retry_count) as max_retry_count,\n       sum(retry_count) as total_retries,\n       avg(size) as avg_size,\n       max(size) as max_size\n  by task_id, task_name, task_playbook_id, type, script_id, script_name\n| alter error_rate = divide(error_count, task_run_count)\n| sort desc error_rate, desc avg_duration_sec",
+      "timeframe": "172800000"
+    },
+    "playbook_task_errors": {
+      "name": "Playbook Task Errors",
+      "query": "dataset = playbook_tasks\n| filter task_status = \"Error\"\n| alter xdm.issue.id = to_integer(entity_id)\n| join type=inner (\n    dataset = issues\n    | filter xdm.issue.name contains \"Issue Name Part Here\"\n  ) as issue_link xdm.issue.id = to_integer(issue_link.xdm.issue.id)\n| join type=left (\n    dataset = case_to_issue\n  ) as case_link xdm.issue.id = to_integer(case_link.xdm.issue.id)\n| fields xdm.issue.id, xdm.case.id, xdm.issue.name, task_id, task_name, task_status, script_name, automated, duration, retry_count, error, errors, start_date, _time",
+      "timeframe": "172800000"
+    }
+  }
+}

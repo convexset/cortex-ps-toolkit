@@ -1,0 +1,40 @@
+{
+  "platform": "agentix",
+  "host_example": "https://api-csagentix.xdr.us.paloaltonetworks.com",
+  "path": "/xsoar/public/v1/lists",
+  "sample_list_item": {
+    "id": "excluded-files-from-quarantine",
+    "version": 1,
+    "cacheVersn": 0,
+    "sequenceNumber": 10729,
+    "primaryTerm": 1,
+    "modified": "2026-02-24T14:18:57.113718805Z",
+    "sizeInBytes": 825,
+    "packID": "",
+    "packName": "",
+    "itemVersion": "",
+    "fromServerVersion": "",
+    "toServerVersion": "",
+    "propagationLabels": [
+      "all"
+    ],
+    "definitionId": "",
+    "isOverridable": false,
+    "vcShouldIgnore": false,
+    "vcShouldKeepItemLegacyProdMachine": false,
+    "commitMessage": "",
+    "shouldCommit": false,
+    "OWNER": {},
+    "name": "excluded-files-from-quarantine",
+    "prevName": "excluded-files-from-quarantine",
+    "data": "",
+    "locked": false,
+    "nameLocked": false,
+    "system": false,
+    "truncated": false,
+    "type": "plaintext",
+    "tags": null,
+    "description": "This list allows you to exclude trusted and critical files from **File Quarantine** commands.\nAdd full path and hash for precision.\nFields supported: endpoint_id, hash, path.\nExample: \"file1.txt, file31.txt\"",
+    "detached": false
+  }
+}

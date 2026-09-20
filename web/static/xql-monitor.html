@@ -1,0 +1,2905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>XQL Query Tool</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator_midnight.min.css" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --border: #2c3846;
+      --text: #e8eef4;
+      --muted: #93a4b5;
+      --accent: #5b9fd4;
+      --danger: #f07178;
+      --ok: #7dd3a8;
+    }
+    * { box-sizing: border-box; }
+    html { overflow-x: hidden; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+      overflow-x: hidden;
+    }
+    header {
+      padding: 1.1rem 1.5rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { margin: 0 0 0.25rem; font-size: 1.25rem; font-weight: 600; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 0.9rem; }
+    a { color: var(--accent); }
+    main {
+      padding: 1rem 1.5rem 2rem;
+      display: grid;
+      gap: 1rem;
+      max-width: 100vw;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem 1rem;
+      min-width: 0;
+      max-width: 100%;
+    }
+    details.panel > summary {
+      cursor: pointer;
+      font-weight: 600;
+      list-style: none;
+      user-select: none;
+    }
+    details.panel > summary::-webkit-details-marker { display: none; }
+    details.panel > summary::before { content: "▸ "; color: var(--muted); }
+    details.panel[open] > summary::before { content: "▾ "; }
+    details.panel > .details-body { margin-top: 0.85rem; }
+    label.field {
+      display: grid;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    input[type="text"], input[type="password"], input[type="number"], select, textarea {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.65rem;
+      font: inherit;
+    }
+    textarea.query {
+      min-height: 11rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      resize: vertical;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: end;
+    }
+    .row > label.field { flex: 1 1 12rem; margin-bottom: 0; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+    }
+    button {
+      background: var(--accent);
+      color: #081018;
+      border: 0;
+      border-radius: 8px;
+      padding: 0.5rem 0.9rem;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary { background: #2c3846; color: var(--text); }
+    button.danger { background: #5a2d32; color: #ffd6d9; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .status { font-size: 0.9rem; color: var(--muted); }
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--ok); }
+    .progress-wrap {
+      height: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3d7aa8, var(--accent));
+      transition: width 0.25s ease;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+      gap: 0.55rem;
+    }
+    .metric {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.65rem;
+    }
+    .metric dt { margin: 0; color: var(--muted); font-size: 0.72rem; }
+    .metric dd {
+      margin: 0.12rem 0 0;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.95rem;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .grid-scroll-wrap {
+      width: 100%;
+      max-width: 100%;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+    }
+    #results-grid {
+      min-height: 320px;
+      width: 100%;
+      min-width: 0;
+    }
+    .tabulator { font-size: 0.82rem; }
+    .grid-scroll-wrap .tabulator {
+      width: 100%;
+      max-width: 100%;
+    }
+    #results-grid .tabulator-tableholder { overflow-x: auto !important; }
+    #results-grid .tabulator-footer {
+      padding: 0.35rem 0.5rem;
+      overflow-x: auto;
+    }
+    #results-grid .tabulator-footer .tabulator-paginator {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem 0.5rem;
+      min-width: 0;
+    }
+    #results-grid .tabulator-footer .tabulator-page {
+      margin: 0;
+    }
+    .grid-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem 1rem;
+    }
+    .grid-controls label.field {
+      margin-bottom: 0;
+      min-width: 0;
+      flex: 0 1 auto;
+    }
+    .grid-controls select {
+      width: auto;
+      min-width: 4.5rem;
+      max-width: 100%;
+    }
+    .grid-hint {
+      margin: 0.35rem 0 0.65rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .preset-list { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+    .preset-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.45rem 0.6rem;
+    }
+    .preset-item strong { font-size: 0.88rem; }
+    .preset-item small { color: var(--muted); display: block; }
+    .preset-name-hover {
+      cursor: help;
+      text-decoration: underline dotted;
+      text-decoration-color: var(--muted);
+      text-underline-offset: 2px;
+    }
+    .preset-query-tooltip {
+      position: fixed;
+      z-index: 10000;
+      max-width: min(36rem, 90vw);
+      max-height: 16rem;
+      overflow: auto;
+      background: #0a0f14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      pointer-events: none;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      min-width: 0;
+    }
+    @media (min-width: 1100px) { .charts { grid-template-columns: 1fr 1fr; } }
+    .chart-box {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.65rem;
+      min-height: 420px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.15rem 0.35rem 0.5rem;
+    }
+    .chart-head h3 { margin: 0; font-size: 0.95rem; }
+    .plot { width: 100%; height: 360px; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+      gap: 0.55rem;
+      margin-bottom: 0.75rem;
+    }
+    .stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.45rem 0.6rem;
+    }
+    .stat dt { margin: 0; color: var(--muted); font-size: 0.72rem; }
+    .stat dd { margin: 0.1rem 0 0; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .hint { color: var(--muted); font-size: 0.82rem; margin: 0.35rem 0 0; }
+    .hidden { display: none !important; }
+    .load-alert {
+      margin: 0;
+      padding: 0.85rem 1.5rem;
+      background: #3a2a22;
+      border-bottom: 1px solid #7a4a32;
+      color: #ffd8c2;
+      font-size: 0.9rem;
+    }
+    .load-alert strong { color: #ffb088; }
+    .load-alert code {
+      background: rgba(0, 0, 0, 0.25);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.3/plotly.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>XQL Query Tool</h1>
+    <p class="subtitle" id="profile-line">Profile: —</p>
+    <p class="subtitle">
+      Run Cortex XQL via the
+      <a href="https://cortex-docs.paloaltonetworks.com/xsiam-api/cortex-platform/xql-query" target="_blank" rel="noopener noreferrer">XQL Query API</a>
+      (start → poll → stream). Offline TSV/JSONL load works from a local file; live API calls need a
+      <a href="#cors-note">CORS workaround</a> (the bundled Python proxy is the simplest option).
+    </p>
+  </header>
+
+  <div id="file-load-alert" class="load-alert hidden" role="alert"></div>
+
+  <main>
+    <section class="panel">
+      <div class="row">
+        <label class="field">Timeframe
+          <select id="timeframe-preset"></select>
+        </label>
+        <label class="field">Load preset query
+          <select id="builtin-preset">
+            <option value="">— select —</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">Query Name
+          <input id="query-name" type="text" value="query" autocomplete="off" />
+        </label>
+        <label class="field" style="display:inline-flex;flex-direction:row;align-items:center;gap:0.5rem;color:var(--text);margin-bottom:0;">
+          <input id="download-tsv-on-complete" type="checkbox" checked />
+          Download as TSV when complete
+        </label>
+      </div>
+      <label class="field">XQL query
+        <textarea id="query-text" class="query" spellcheck="false"></textarea>
+      </label>
+      <div class="actions">
+        <button id="run-btn" type="button">Run query</button>
+        <button id="cancel-btn" type="button" class="danger secondary" disabled>Cancel</button>
+        <button id="save-tsv-btn" type="button" class="secondary" disabled>Save results as TSV</button>
+        <button id="load-jsonl-btn" type="button" class="secondary">Load results JSONL</button>
+        <button id="load-tsv-btn" type="button" class="secondary">Load TSV export</button>
+        <input id="file-jsonl" type="file" accept=".jsonl,.txt,application/json" class="hidden" />
+        <input id="file-tsv" type="file" accept=".tsv,text/tab-separated-values,text/plain" class="hidden" />
+        <span id="run-status" class="status">Ready.</span>
+      </div>
+      <div class="progress-wrap" style="margin-top:0.75rem;">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+    </section>
+
+    <details class="panel" id="local-presets-panel">
+      <summary>Local preset queries (localStorage)</summary>
+      <div class="details-body">
+        <div class="row">
+          <label class="field">Preset name
+            <input id="local-preset-name" type="text" placeholder="My query" />
+          </label>
+          <div class="actions" style="padding-bottom:0.15rem;">
+            <button id="save-local-preset" type="button" class="secondary">Save current query</button>
+          </div>
+        </div>
+        <div id="local-preset-list" class="preset-list"></div>
+      </div>
+    </details>
+
+    <section class="panel" id="metrics-panel" hidden>
+      <h2 style="margin:0 0 0.65rem;font-size:0.95rem;">Query metrics</h2>
+      <dl id="metrics-grid" class="metrics"></dl>
+    </section>
+
+    <section class="panel">
+      <div class="chart-head">
+        <h2 style="margin:0;font-size:0.95rem;">Results</h2>
+        <div class="grid-controls">
+          <span id="grid-status" class="status"></span>
+          <label class="field" style="max-width:9rem;">Rows per page
+            <select id="grid-page-size">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="250">250</option>
+              <option value="1000">1000</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <p class="grid-hint">Grid footer: first / previous / next / last page. Rows per page is set above. Wide result sets scroll horizontally within the panel.</p>
+      <div class="grid-scroll-wrap">
+        <div id="results-grid"></div>
+      </div>
+      <div id="viz-actions" class="actions" style="margin-top:0.85rem;"></div>
+      <div id="viz-recommendations" class="hint" hidden></div>
+    </section>
+
+    <section id="viz-section" class="panel hidden">
+      <h2 style="margin:0 0 0.65rem;font-size:0.95rem;">Visualisation — <span id="viz-profile-label"></span></h2>
+      <div id="viz-stats" class="stats-grid"></div>
+      <div id="duration-controls" class="row" style="margin-bottom:0.75rem;">
+        <label class="field" style="max-width:12rem;">Duration unit
+          <select id="duration-unit">
+            <option value="minutes" selected>Minutes</option>
+            <option value="seconds">Seconds</option>
+          </select>
+        </label>
+        <label class="field" style="max-width:12rem;">Histogram bin
+          <select id="bin-size">
+            <option value="30">30s</option>
+            <option value="60" selected>1min</option>
+            <option value="120">2min</option>
+            <option value="300">5min</option>
+          </select>
+        </label>
+      </div>
+      <div id="main-charts" class="charts">
+        <div class="chart-box">
+          <div class="chart-head"><h3>Duration histogram</h3></div>
+          <div id="histogram" class="plot"></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-head"><h3 id="scatter-title">create_time_after_first vs duration</h3></div>
+          <div id="scatter" class="plot"></div>
+        </div>
+      </div>
+      <div id="extra-charts" class="charts"></div>
+    </section>
+  </main>
+
+  <script>
+    const STORAGE = {
+      credProfiles: "xql_monitor_cred_profiles_v2",
+      activeCredProfile: "xql_monitor_active_cred_profile_v2",
+      credsLegacy: "xql_monitor_credentials_v1",
+      localPresets: "xql_monitor_local_presets_v1",
+    };
+
+
+    function toolkitProfile() {
+      const params = new URLSearchParams(location.search);
+      return params.get("profile") || "";
+    }
+
+    function updateProfileLine() {
+      const slug = toolkitProfile();
+      const line = document.getElementById("profile-line");
+      if (line) line.textContent = slug ? `Profile: ${slug} (from API Profiles)` : "No profile selected in parent app.";
+    }
+
+    async function toolkitApiRun(query, timeframeMs) {
+      const profile = toolkitProfile();
+      if (!profile) throw new Error("Select a profile in the Cortex PS Toolkit header.");
+      const response = await fetch("/api/xql/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile, query, timeframe: { relativeTime: Math.round(Number(timeframeMs)) } }),
+      });
+      const text = await response.text();
+      let body = {};
+      if (text) { try { body = JSON.parse(text); } catch { body = { error: text.slice(0, 300) }; } }
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+      return body;
+    }
+
+    const TIMEFRAMES = [
+      ["3600000", "Last 1 hour"],
+      ["7200000", "Last 2 hours"],
+      ["14400000", "Last 4 hours"],
+      ["28800000", "Last 8 hours"],
+      ["43200000", "Last 12 hours"],
+      ["86400000", "Last 1 day"],
+      ["172800000", "Last 2 days"],
+      ["345600000", "Last 4 days"],
+      ["604800000", "Last 1 week"],
+      ["1209600000", "Last 2 weeks"],
+    ];
+
+    const BUILTIN_PRESETS = {
+      case_resolution: {
+        name: "Case Resolution",
+        query: `dataset = cases
+| filter xdm.case.status_progress = ENUM.RESOLVED
+| filter xdm.case.name contains "Case Name Part Here"
+| comp earliest(_insert_time) as create_time, latest(resolution_time) as resolution_time, latest(xdm.case.status_progress) as xdm.case.status_progress by xdm.case.id
+| alter resolution_time = to_timestamp(resolution_time, "MILLIS")
+| alter duration = timestamp_diff(resolution_time, create_time, "MINUTE")
+| limit 100000`,
+        timeframe: "172800000",
+      },
+      issue_resolution: {
+        name: "Issue Resolution",
+        query: `dataset = issues
+| filter xdm.issue.name contains "Issue Name Part Here"
+| filter xdm.issue.resolution_timer != null
+| filter json_extract_scalar(xdm.issue.resolution_timer, "$.runStatus") = "ended"
+| alter start_date = json_extract_scalar(xdm.issue.resolution_timer, "$.startDate")
+| alter end_date = json_extract_scalar(xdm.issue.resolution_timer, "$.endDate")
+| alter create_time = parse_timestamp("%Y-%m-%d %H:%M:%S", start_date)
+| alter resolution_time = parse_timestamp("%Y-%m-%d %H:%M:%S", end_date)
+| alter duration = divide(to_integer(json_extract_scalar(xdm.issue.resolution_timer, "$.totalDuration")), 60)
+| fields xdm.issue.id, create_time, resolution_time, duration, xdm.issue.status.progress`,
+        timeframe: "172800000",
+      },
+      playbook_run_performance_rollup: {
+        name: "Playbook Run Performance",
+        query: `dataset = playbook_runs
+| alter xdm.issue.id = to_integer(entity_id)
+| join type=inner (
+    dataset = issues
+    | filter xdm.issue.name contains "Issue Name Part Here"
+  ) as issue_link xdm.issue.id = to_integer(issue_link.xdm.issue.id)
+| alter net_duration_sec = divide(to_integer(net_duration), 1000)
+| alter run_time_sec = divide(to_integer(run_time), 1000)
+| comp count() as run_count,
+       count_distinct(xdm.issue.id) as issue_count,
+       sum(if(playbook_status = "failed", 1, 0)) as failed_count,
+       sum(if(playbook_status = "completed", 1, 0)) as completed_count,
+       avg(net_duration_sec) as avg_net_duration_sec,
+       median(net_duration_sec) as median_net_duration_sec,
+       min(net_duration_sec) as min_net_duration_sec,
+       max(net_duration_sec) as max_net_duration_sec,
+       avg(run_time_sec) as avg_run_time_sec,
+       median(run_time_sec) as median_run_time_sec,
+       min(run_time_sec) as min_run_time_sec,
+       max(run_time_sec) as max_run_time_sec
+  by playbook_name, playbook_id, entity_trigger_type, is_sub_playbook, parent_playbooks
+| alter failure_rate = divide(failed_count, run_count)
+| sort desc failure_rate, desc avg_net_duration_sec`,
+        timeframe: "172800000",
+      },
+      playbook_task_performance_rollup: {
+        name: "Playbook Task Performance",
+        query: `dataset = playbook_tasks
+| alter xdm.issue.id = to_integer(entity_id)
+| join type=inner (
+    dataset = issues
+    | filter xdm.issue.name contains "Issue Name Part Here"
+  ) as issue_link xdm.issue.id = to_integer(issue_link.xdm.issue.id)
+| alter duration_sec = divide(to_integer(duration), 1000)
+| alter retry_count = to_integer(retry_count)
+| alter size = to_integer(size)
+| comp count() as task_run_count,
+       count_distinct(xdm.issue.id) as issue_count,
+       sum(if(task_status = "Error", 1, 0)) as error_count,
+       sum(if(task_status = "Completed", 1, 0)) as completed_count,
+       avg(duration_sec) as avg_duration_sec,
+       median(duration_sec) as median_duration_sec,
+       min(duration_sec) as min_duration_sec,
+       max(duration_sec) as max_duration_sec,
+       avg(retry_count) as avg_retry_count,
+       max(retry_count) as max_retry_count,
+       sum(retry_count) as total_retries,
+       avg(size) as avg_size,
+       max(size) as max_size
+  by task_id, task_name, task_playbook_id, type, script_id, script_name
+| alter error_rate = divide(error_count, task_run_count)
+| sort desc error_rate, desc avg_duration_sec`,
+        timeframe: "172800000",
+      },
+      playbook_task_errors: {
+        name: "Playbook Task Errors",
+        query: `dataset = playbook_tasks
+| filter task_status = "Error"
+| alter xdm.issue.id = to_integer(entity_id)
+| join type=inner (
+    dataset = issues
+    | filter xdm.issue.name contains "Issue Name Part Here"
+  ) as issue_link xdm.issue.id = to_integer(issue_link.xdm.issue.id)
+| join type=left (
+    dataset = case_to_issue
+  ) as case_link xdm.issue.id = to_integer(case_link.xdm.issue.id)
+| fields xdm.issue.id, xdm.case.id, xdm.issue.name, task_id, task_name, task_status, script_name, automated, duration, retry_count, error, errors, start_date, _time`,
+        timeframe: "172800000",
+      },
+    };
+
+    const plotLayoutBase = {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "#141c24",
+      font: { color: "#c5d0da", size: 12 },
+      margin: { t: 24, r: 24, b: 56, l: 64 },
+      xaxis: { gridcolor: "#2c3846", zerolinecolor: "#2c3846" },
+      yaxis: { gridcolor: "#2c3846", zerolinecolor: "#2c3846" },
+    };
+
+    function plotLayoutWithSlantedXAxis(options = {}) {
+      const xaxis = {
+        ...plotLayoutBase.xaxis,
+        automargin: true,
+        tickangle: -35,
+        title: {
+          text: options.xTitle || "",
+          standoff: 28,
+        },
+      };
+      if (options.tickvals) {
+        xaxis.tickvals = options.tickvals;
+        xaxis.ticktext = options.ticktext || options.tickvals;
+      }
+      return {
+        ...plotLayoutBase,
+        barmode: options.barmode || "group",
+        margin: { ...plotLayoutBase.margin, b: options.bottomMargin || 120 },
+        xaxis,
+        yaxis: {
+          ...plotLayoutBase.yaxis,
+          title: { text: options.yTitle || "Value" },
+        },
+      };
+    }
+
+    function plotLayoutWithSlantedXAxisStacked(options = {}) {
+      return {
+        ...plotLayoutWithSlantedXAxis({ ...options, bottomMargin: 150 }),
+        barmode: "stack",
+        showlegend: true,
+        legend: {
+          orientation: "h",
+          y: -0.28,
+          x: 0,
+          font: { size: 10 },
+        },
+      };
+    }
+
+    const state = {
+      rows: [],
+      columns: [],
+      table: null,
+      abort: null,
+      generatedViz: null,
+      vizRows: [],
+      loadedLocalPresetId: null,
+    };
+
+    const els = {
+      credProfileSelect: document.getElementById("cred-profile-select"),
+      credProfileName: document.getElementById("cred-profile-name"),
+      saveCredProfile: document.getElementById("save-cred-profile"),
+      deleteCredProfile: document.getElementById("delete-cred-profile"),
+      apiUrl: document.getElementById("api-url"),
+      apiId: document.getElementById("api-id"),
+      apiKey: document.getElementById("api-key"),
+      timeframe: document.getElementById("timeframe-preset"),
+      builtinPreset: document.getElementById("builtin-preset"),
+      queryText: document.getElementById("query-text"),
+      queryName: document.getElementById("query-name"),
+      downloadTsvOnComplete: document.getElementById("download-tsv-on-complete"),
+      saveTsvBtn: document.getElementById("save-tsv-btn"),
+      runBtn: document.getElementById("run-btn"),
+      cancelBtn: document.getElementById("cancel-btn"),
+      runStatus: document.getElementById("run-status"),
+      progressBar: document.getElementById("progress-bar"),
+      metricsPanel: document.getElementById("metrics-panel"),
+      metricsGrid: document.getElementById("metrics-grid"),
+      gridStatus: document.getElementById("grid-status"),
+      gridPageSize: document.getElementById("grid-page-size"),
+      vizActions: document.getElementById("viz-actions"),
+      vizSection: document.getElementById("viz-section"),
+      vizRecommendations: document.getElementById("viz-recommendations"),
+      vizProfileLabel: document.getElementById("viz-profile-label"),
+      durationControls: document.getElementById("duration-controls"),
+      mainCharts: document.getElementById("main-charts"),
+      extraCharts: document.getElementById("extra-charts"),
+      localPresetName: document.getElementById("local-preset-name"),
+      saveLocalPreset: document.getElementById("save-local-preset"),
+      localPresetList: document.getElementById("local-preset-list"),
+      durationUnit: document.getElementById("duration-unit"),
+      binSize: document.getElementById("bin-size"),
+      scatterTitle: document.getElementById("scatter-title"),
+    };
+
+    function useProxy() {
+      return location.protocol.startsWith("http") && (location.hostname === "127.0.0.1" || location.hostname === "localhost");
+    }
+
+    function apiRoot() {
+      const base = els.apiUrl.value.trim().replace(/\/$/, "");
+      return useProxy() ? "" : base;
+    }
+
+    function authHeaders() {
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: els.apiKey.value,
+        "x-xdr-auth-id": String(els.apiId.value || "").trim(),
+      };
+      if (useProxy()) headers["X-Api-Base"] = els.apiUrl.value.trim().replace(/\/$/, "");
+      return headers;
+    }
+
+    function setStatus(text, kind) {
+      els.runStatus.textContent = text;
+      els.runStatus.className = "status" + (kind ? ` ${kind}` : "");
+    }
+
+    function setProgress(pct) {
+      els.progressBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    }
+
+    function loadCredProfiles() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE.credProfiles) || "[]");
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function writeCredProfiles(items) {
+      localStorage.setItem(STORAGE.credProfiles, JSON.stringify(items));
+      renderCredProfileSelect();
+    }
+
+    function migrateLegacyCredentials() {
+      if (loadCredProfiles().length) return;
+      try {
+        const raw = localStorage.getItem(STORAGE.credsLegacy);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (!data.url) return;
+        const profile = {
+          id: crypto.randomUUID(),
+          name: tenantNameFromUrl(data.url) || "Saved profile",
+          url: data.url,
+          keyId: String(data.id ?? ""),
+          key: data.key || "",
+        };
+        writeCredProfiles([profile]);
+        localStorage.setItem(STORAGE.activeCredProfile, profile.id);
+      } catch (_) { /* ignore */ }
+    }
+
+    function tenantNameFromUrl(url) {
+      try {
+        return new URL(url).hostname.split(".")[0] || "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function currentCredFields() {
+      return {
+        url: els.apiUrl.value.trim(),
+        keyId: els.apiId.value.trim(),
+        key: els.apiKey.value,
+      };
+    }
+
+    function applyCredFields(profile) {
+      els.apiUrl.value = profile.url || "";
+      els.apiId.value = profile.keyId != null ? String(profile.keyId) : "";
+      els.apiKey.value = profile.key || "";
+      els.credProfileName.value = profile.name || "";
+    }
+
+    function renderCredProfileSelect() {
+      const items = loadCredProfiles();
+      const activeId = localStorage.getItem(STORAGE.activeCredProfile) || "";
+      els.credProfileSelect.innerHTML = '<option value="">— enter manually —</option>' + items.map((item) => (
+        `<option value="${item.id}"${item.id === activeId ? " selected" : ""}>${escapeHtml(item.name)}</option>`
+      )).join("");
+    }
+
+    function selectCredProfile(profileId) {
+      if (!profileId) {
+        localStorage.removeItem(STORAGE.activeCredProfile);
+        els.credProfileName.value = "";
+        return;
+      }
+      const profile = loadCredProfiles().find((item) => item.id === profileId);
+      if (!profile) return;
+      localStorage.setItem(STORAGE.activeCredProfile, profileId);
+      applyCredFields(profile);
+    }
+
+    function saveCredProfile() {
+      const fields = currentCredFields();
+      if (!fields.url || !fields.keyId || !fields.key) {
+        setStatus("Enter API URL, key ID, and key before saving a profile.", "error");
+        return;
+      }
+      const name = els.credProfileName.value.trim()
+        || tenantNameFromUrl(fields.url)
+        || `Profile ${new Date().toISOString().slice(0, 16)}`;
+      const items = loadCredProfiles();
+      const activeId = els.credProfileSelect.value;
+      let profile;
+      if (activeId) {
+        profile = items.find((item) => item.id === activeId);
+        if (profile) {
+          profile.name = name;
+          profile.url = fields.url;
+          profile.keyId = fields.keyId;
+          profile.key = fields.key;
+        }
+      }
+      if (!profile) {
+        profile = { id: crypto.randomUUID(), name, ...fields };
+        items.push(profile);
+      }
+      writeCredProfiles(items);
+      localStorage.setItem(STORAGE.activeCredProfile, profile.id);
+      els.credProfileSelect.value = profile.id;
+      els.credProfileName.value = profile.name;
+      setStatus(`Saved credential profile “${profile.name}”.`);
+    }
+
+    function deleteCredProfile() {
+      const activeId = els.credProfileSelect.value;
+      if (!activeId) {
+        setStatus("Select a saved profile to delete.", "error");
+        return;
+      }
+      const items = loadCredProfiles();
+      const profile = items.find((item) => item.id === activeId);
+      if (!profile) return;
+      if (!confirm(`Delete credential profile “${profile.name}”?`)) return;
+      writeCredProfiles(items.filter((item) => item.id !== activeId));
+      localStorage.removeItem(STORAGE.activeCredProfile);
+      els.credProfileSelect.value = "";
+      els.credProfileName.value = "";
+      els.apiUrl.value = "";
+      els.apiId.value = "";
+      els.apiKey.value = "";
+      setStatus(`Deleted credential profile “${profile.name}”.`);
+    }
+
+    function initCredentials() {
+      updateProfileLine();
+    }
+
+    function renderCredProfileSelect() {}
+    function migrateLegacyCredentials() {}
+
+    function normalizeLocalPreset(item) {
+      const normalized = { ...item };
+      if (!normalized.queryNameIsCustom) {
+        delete normalized.queryName;
+      } else if (
+        normalized.queryName
+        && normalized.name
+        && normalized.queryName.trim().toLowerCase() === normalized.name.trim().toLowerCase()
+      ) {
+        delete normalized.queryName;
+        normalized.queryNameIsCustom = false;
+      }
+      return normalized;
+    }
+
+    function resolveLocalPresetQueryName(item) {
+      if (item.queryNameIsCustom && item.queryName) return item.queryName;
+      return item.name;
+    }
+
+    function buildLocalPresetPayload(name) {
+      const queryName = els.queryName.value.trim() || name;
+      const queryNameIsCustom = queryName.toLowerCase() !== name.toLowerCase();
+      return {
+        query: els.queryText.value,
+        timeframe: els.timeframe.value,
+        ...(queryNameIsCustom ? { queryName, queryNameIsCustom: true } : {}),
+      };
+    }
+
+    function applyLocalPresetFields(item, name, payload) {
+      item.name = name;
+      item.query = payload.query;
+      item.timeframe = payload.timeframe;
+      if (payload.queryNameIsCustom) {
+        item.queryName = payload.queryName;
+        item.queryNameIsCustom = true;
+      } else {
+        delete item.queryName;
+        delete item.queryNameIsCustom;
+      }
+    }
+
+    function loadLocalPresets() {
+      try {
+        const items = JSON.parse(localStorage.getItem(STORAGE.localPresets) || "[]");
+        return items.map(normalizeLocalPreset);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function migrateLocalPresetsStorage() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STORAGE.localPresets) || "[]");
+        const normalized = raw.map(normalizeLocalPreset);
+        if (JSON.stringify(normalized) !== JSON.stringify(raw)) {
+          localStorage.setItem(STORAGE.localPresets, JSON.stringify(normalized));
+        }
+      } catch (_) {
+        /* ignore corrupt storage */
+      }
+    }
+
+    function writeLocalPresets(items) {
+      localStorage.setItem(STORAGE.localPresets, JSON.stringify(items.map(normalizeLocalPreset)));
+      renderLocalPresets();
+    }
+
+    let presetQueryTooltip = null;
+
+    function ensurePresetQueryTooltip() {
+      if (!presetQueryTooltip) {
+        presetQueryTooltip = document.createElement("div");
+        presetQueryTooltip.className = "preset-query-tooltip hidden";
+        presetQueryTooltip.setAttribute("role", "tooltip");
+        document.body.appendChild(presetQueryTooltip);
+      }
+      return presetQueryTooltip;
+    }
+
+    function positionPresetQueryTooltip(anchor, event) {
+      const tooltip = ensurePresetQueryTooltip();
+      const margin = 10;
+      const rect = anchor.getBoundingClientRect();
+      let left = event ? event.clientX + margin : rect.left;
+      let top = event ? event.clientY + margin : rect.bottom + margin;
+      tooltip.style.left = "0";
+      tooltip.style.top = "0";
+      tooltip.classList.remove("hidden");
+      const tipRect = tooltip.getBoundingClientRect();
+      if (left + tipRect.width > window.innerWidth - margin) {
+        left = window.innerWidth - tipRect.width - margin;
+      }
+      if (top + tipRect.height > window.innerHeight - margin) {
+        top = (event ? event.clientY : rect.top) - tipRect.height - margin;
+      }
+      left = Math.max(margin, left);
+      top = Math.max(margin, top);
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    }
+
+    function hidePresetQueryTooltip() {
+      if (presetQueryTooltip) presetQueryTooltip.classList.add("hidden");
+    }
+
+    function bindPresetNameTooltips() {
+      const tooltip = ensurePresetQueryTooltip();
+      els.localPresetList.querySelectorAll(".preset-name-hover").forEach((el) => {
+        el.addEventListener("mouseenter", (event) => {
+          const item = loadLocalPresets().find((entry) => entry.id === el.dataset.id);
+          tooltip.textContent = item && item.query ? item.query : "(empty query)";
+          positionPresetQueryTooltip(el, event);
+        });
+        el.addEventListener("mousemove", (event) => {
+          if (tooltip.classList.contains("hidden")) return;
+          positionPresetQueryTooltip(el, event);
+        });
+        el.addEventListener("mouseleave", hidePresetQueryTooltip);
+      });
+    }
+
+    function findLocalPresetByName(items, name) {
+      const normalized = name.trim().toLowerCase();
+      return items.find((entry) => entry.name.trim().toLowerCase() === normalized);
+    }
+
+    function renderLocalPresets() {
+      const items = loadLocalPresets();
+      if (!items.length) {
+        els.localPresetList.innerHTML = '<p class="hint">No local presets saved yet.</p>';
+        hidePresetQueryTooltip();
+        return;
+      }
+      els.localPresetList.innerHTML = items.map((item) => `
+        <div class="preset-item" data-id="${item.id}">
+          <div>
+            <strong class="preset-name-hover" data-id="${item.id}">${escapeHtml(item.name)}</strong>
+            <small>${escapeHtml((item.query || "").split("\n")[0].slice(0, 90))}</small>
+          </div>
+          <div class="actions">
+            <button type="button" class="secondary" data-action="load">Load</button>
+            <button type="button" class="secondary" data-action="rename">Rename</button>
+            <button type="button" class="danger secondary" data-action="delete">Delete</button>
+          </div>
+        </div>`).join("");
+      els.localPresetList.querySelectorAll("button").forEach((btn) => {
+        btn.addEventListener("click", onLocalPresetAction);
+      });
+      bindPresetNameTooltips();
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[ch]));
+    }
+
+    function onLocalPresetAction(event) {
+      const action = event.currentTarget.dataset.action;
+      const id = event.currentTarget.closest(".preset-item").dataset.id;
+      const items = loadLocalPresets();
+      const item = items.find((entry) => entry.id === id);
+      if (!item) return;
+      if (action === "load") {
+        els.queryText.value = item.query;
+        if (item.timeframe) els.timeframe.value = item.timeframe;
+        els.queryName.value = resolveLocalPresetQueryName(item);
+        els.localPresetName.value = item.name;
+        state.loadedLocalPresetId = id;
+        setStatus(`Loaded local preset “${item.name}”.`);
+        return;
+      }
+      if (action === "delete") {
+        const deletedName = item.name;
+        writeLocalPresets(items.filter((entry) => entry.id !== id));
+        if (state.loadedLocalPresetId === id) {
+          state.loadedLocalPresetId = null;
+          if (els.localPresetName.value.trim() === deletedName.trim()) {
+            els.localPresetName.value = "";
+          }
+        }
+        setStatus(`Deleted preset “${deletedName}”.`);
+        return;
+      }
+      if (action === "rename") {
+        const oldName = item.name;
+        const name = prompt("Preset name", item.name);
+        if (!name) return;
+        const trimmed = name.trim();
+        if (!trimmed) {
+          setStatus("Preset name cannot be empty.");
+          return;
+        }
+        if (trimmed.toLowerCase() === oldName.trim().toLowerCase()) return;
+        const duplicate = findLocalPresetByName(items, trimmed);
+        if (duplicate && duplicate.id !== id) {
+          setStatus(`A preset named “${duplicate.name}” already exists.`);
+          return;
+        }
+        item.name = trimmed;
+        if (!item.queryNameIsCustom) {
+          delete item.queryName;
+        }
+        writeLocalPresets(items);
+        if (state.loadedLocalPresetId === id || els.localPresetName.value.trim() === oldName.trim()) {
+          els.localPresetName.value = trimmed;
+        }
+        if (
+          state.loadedLocalPresetId === id
+          || !item.queryNameIsCustom
+          || els.queryName.value.trim() === oldName.trim()
+        ) {
+          els.queryName.value = resolveLocalPresetQueryName(item);
+        }
+        setStatus(`Renamed preset to “${trimmed}”.`);
+      }
+    }
+
+    function initSelectors() {
+      els.timeframe.innerHTML = TIMEFRAMES.map(([value, label], index) => (
+        `<option value="${value}"${value === "86400000" ? " selected" : ""}>${label}</option>`
+      )).join("");
+      els.builtinPreset.innerHTML = '<option value="">— select —</option>' + Object.entries(BUILTIN_PRESETS).map(([key, preset]) => (
+        `<option value="${key}">${escapeHtml(preset.name)}</option>`
+      )).join("");
+      els.builtinPreset.addEventListener("change", () => {
+        const key = els.builtinPreset.value;
+        if (!key) return;
+        const preset = BUILTIN_PRESETS[key];
+        els.queryText.value = preset.query;
+        if (preset.timeframe) els.timeframe.value = preset.timeframe;
+        els.queryName.value = preset.queryName || preset.name || "query";
+        setStatus(`Loaded built-in preset “${preset.name}”.`);
+      });
+      els.queryText.value = "";
+    }
+
+    async function apiPost(path, body, signal) {
+      const resolved = useProxy() ? `/proxy${path}` : `${apiRoot()}${path}`;
+      const response = await fetch(resolved, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+        signal,
+      });
+      const contentType = response.headers.get("Content-Type") || "";
+      if (!response.ok) {
+        const detail = contentType.includes("json") ? JSON.stringify(await response.json()) : await response.text();
+        throw new Error(`HTTP ${response.status}: ${detail.slice(0, 400)}`);
+      }
+      if (contentType.includes("json")) return response.json();
+      return response.arrayBuffer();
+    }
+
+    async function pollResults(queryId, signal, onProgress) {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        const payload = await apiPost("/public_api/v1/xql/get_query_results", {
+          request_data: {
+            query_id: queryId,
+            pending_flag: false,
+            limit: 1000000,
+            format: "json",
+          },
+        }, signal);
+        const reply = payload.reply || {};
+        onProgress({ phase: "poll", attempt, reply });
+        if (reply.status === "PENDING") {
+          setProgress(Math.min(35, 10 + attempt));
+          await sleep(1500, signal);
+          continue;
+        }
+        if (reply.status === "FAIL") throw new Error(reply.err_msg || "Query failed");
+        return reply;
+      }
+      throw new Error("Timed out waiting for query results");
+    }
+
+    async function fetchStream(streamId, signal, onRow) {
+      const resolved = useProxy()
+        ? `/proxy/public_api/v1/xql/get_query_results_stream`
+        : `${apiRoot()}/public_api/v1/xql/get_query_results_stream`;
+      const response = await fetch(resolved, {
+        method: "POST",
+        headers: { ...authHeaders(), "Accept-Encoding": "gzip" },
+        body: JSON.stringify({ request_data: { stream_id: streamId, is_gzip_compressed: false } }),
+        signal,
+      });
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`Stream HTTP ${response.status}: ${detail.slice(0, 400)}`);
+      }
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const text = (bytes[0] === 0x1f && bytes[1] === 0x8b)
+        ? new TextDecoder().decode(await decompressGzip(bytes))
+        : new TextDecoder().decode(bytes);
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      lines.forEach((line, index) => {
+        onRow(JSON.parse(line), index, lines.length);
+      });
+      return lines.length;
+    }
+
+    async function decompressGzip(bytes) {
+      if (typeof DecompressionStream === "undefined") {
+        throw new Error("Browser cannot decompress gzip stream; use serve-xql-monitor.py proxy or load JSONL export.");
+      }
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+      return new Response(stream).arrayBuffer();
+    }
+
+    function sleep(ms, signal) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, ms);
+        if (signal) {
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        }
+      });
+    }
+
+    function showMetrics(reply, extras) {
+      const items = [
+        ["Status", reply.status],
+        ["Rows", reply.number_of_results],
+        ["Query ID", extras.queryId],
+        ["Stream ID", reply.results && reply.results.stream_id],
+        ["Remaining quota", reply.remaining_quota],
+        ["Query cost", formatCost(reply.query_cost_charged || reply.query_cost)],
+        ["Elapsed", extras.elapsedMs != null ? `${(extras.elapsedMs / 1000).toFixed(1)}s` : "—"],
+      ];
+      els.metricsGrid.innerHTML = items.map(([label, value]) => (
+        `<div class="metric"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value == null ? "—" : String(value))}</dd></div>`
+      )).join("");
+      els.metricsPanel.hidden = false;
+    }
+
+    function formatCost(cost) {
+      if (!cost) return "—";
+      if (typeof cost === "object") return Object.values(cost).map((v) => Number(v).toFixed(4)).join(", ");
+      return String(cost);
+    }
+
+    function formatFileTimestamp(date = new Date()) {
+      const pad = (value) => String(value).padStart(2, "0");
+      return [
+        date.getFullYear(),
+        pad(date.getMonth() + 1),
+        pad(date.getDate()),
+        pad(date.getHours()),
+        pad(date.getMinutes()),
+        pad(date.getSeconds()),
+      ].join("_");
+    }
+
+    function sanitizeFileName(name) {
+      const cleaned = String(name || "query").trim().replace(/[\\/:*?"<>|]+/g, "_");
+      return cleaned || "query";
+    }
+
+    function buildAutoDownloadFilename(queryId) {
+      const name = sanitizeFileName(els.queryName.value);
+      const ts = formatFileTimestamp();
+      if (queryId) {
+        const id = sanitizeFileName(String(queryId));
+        return `${name} - ${id} - ${ts}.tsv`;
+      }
+      return `${name} - ${ts}.tsv`;
+    }
+
+    function buildManualSaveFilename() {
+      return `query_${formatFileTimestamp()}.tsv`;
+    }
+
+    function columnKeys(rows) {
+      if (!rows.length) return [];
+      const ordered = [];
+      const seen = new Set();
+      const addKey = (key) => {
+        if (!seen.has(key)) {
+          seen.add(key);
+          ordered.push(key);
+        }
+      };
+      Object.keys(rows[0]).forEach(addKey);
+      rows.forEach((row) => Object.keys(row).forEach(addKey));
+      return ordered;
+    }
+
+    function gridFieldId(index) {
+      return `__col_${index}`;
+    }
+
+    function rowsForGrid(rows, fields) {
+      return rows.map((row) => {
+        const gridRow = {};
+        fields.forEach((field, index) => {
+          gridRow[gridFieldId(index)] = cellValue(row, field);
+        });
+        return gridRow;
+      });
+    }
+
+    function findColumnKey(rows, wanted) {
+      const target = wanted.toLowerCase();
+      return columnKeys(rows).find((key) => key.toLowerCase() === target) || null;
+    }
+
+    function hasColumns(rows, ...wanted) {
+      return wanted.every((name) => findColumnKey(rows, name) != null);
+    }
+
+    function cellValue(row, columnKey) {
+      if (columnKey == null) return "";
+      const value = row[columnKey];
+      return value == null ? "" : value;
+    }
+
+    function rowsToTsv(rows) {
+      if (!rows.length) return "";
+      const headers = columnKeys(rows);
+      const escapeCell = (value) => {
+        const text = value == null ? "" : String(value);
+        return /[\t\r\n"]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      };
+      const lines = [headers.join("\t")];
+      rows.forEach((row) => {
+        lines.push(headers.map((header) => escapeCell(row[header])).join("\t"));
+      });
+      return lines.join("\n");
+    }
+
+    function downloadTsvContent(content, filename) {
+      const blob = new Blob([content], { type: "text/tab-separated-values;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    function downloadResultTsv(rows, filename) {
+      downloadTsvContent(rowsToTsv(rows), filename);
+    }
+
+    const TIMESTAMP_COLUMN_HINTS = new Set([
+      "_time",
+      "_insert_time",
+      "start_date",
+      "resolution_time",
+      "create_time",
+      "end_date",
+      "issue_create_time",
+    ]);
+
+    function normalizeColumnName(columnKey) {
+      const lower = String(columnKey || "").toLowerCase();
+      const dot = lower.lastIndexOf(".");
+      return dot >= 0 ? lower.slice(dot + 1) : lower;
+    }
+
+    function columnNameSuggestsTimestamp(columnKey) {
+      return TIMESTAMP_COLUMN_HINTS.has(normalizeColumnName(columnKey));
+    }
+
+    function formatTimestampDisplay(value) {
+      if (value === "" || value == null) return "";
+      const ms = parseTimestamp(value);
+      if (ms == null) return String(value);
+      const date = new Date(ms);
+      const pad = (part) => String(part).padStart(2, "0");
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${months[date.getMonth()]} ${date.getDate()} ${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    function buildTabulatorColumns(fields, rows) {
+      // Tabulator treats dots in `field` as nested paths (xdm.case.id → row.xdm.case.id).
+      // Use safe internal ids; original names stay in `title` and state.rows for TSV/viz.
+      return fields.map((field, index) => {
+        const column = {
+          title: field,
+          field: gridFieldId(index),
+          headerSort: true,
+        };
+        if (rows.length && inferColumnType(rows, field) === "timestamp") {
+          column.formatter = (cell) => formatTimestampDisplay(cell.getValue());
+          column.sorter = (a, b) => (parseTimestamp(a) || 0) - (parseTimestamp(b) || 0);
+        }
+        return column;
+      });
+    }
+
+    function applyResultSet(rows, options = {}) {
+      if (!Array.isArray(rows)) {
+        throw new Error("Result set must be an array of row objects.");
+      }
+      state.rows = rows;
+      state.columns = columnKeys(rows);
+      if (state.table) {
+        state.table.destroy();
+        state.table = null;
+      }
+      if (!rows.length) {
+        els.gridStatus.textContent = "0 rows";
+        els.saveTsvBtn.disabled = true;
+        clearVisualization();
+        updateVisualizationOffers([]);
+        return;
+      }
+      state.table = new Tabulator("#results-grid", {
+        data: rowsForGrid(rows, state.columns),
+        columns: buildTabulatorColumns(state.columns, rows),
+        layout: "fitData",
+        height: "520px",
+        pagination: true,
+        paginationSize: Number(els.gridPageSize.value) || 50,
+        paginationSizeSelector: false,
+        paginationButtonCount: 5,
+        movableColumns: true,
+        persistence: false,
+      });
+      els.gridStatus.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"}`;
+      els.saveTsvBtn.disabled = false;
+      clearVisualization();
+      updateVisualizationOffers(rows);
+      if (options.downloadTsv) {
+        downloadResultTsv(rows, options.downloadFilename || buildAutoDownloadFilename());
+      }
+    }
+
+    const TYPE_MATCH_RATIO = 0.75;
+    const HINTED_TIMESTAMP_RATIO = 0.5;
+
+    const STATUS_PROGRESS_COLORS = {
+      RESOLVED: "#5b9fd4",
+      NEW: "#7dd3a8",
+      IN_PROGRESS: "#e6c07b",
+    };
+    const AUTO_STATUS_COLORS = ["#f07178", "#c678dd", "#56b6c2", "#d19a66", "#98c379", "#abb2bf", "#61afef", "#be5046"];
+
+    const PRESET_VIZ_RECOMMENDATIONS = {
+      case_resolution: [
+        "Case Duration — duration histogram (RESOLVED) + scatter coloured by status_progress",
+        "Hourly volume — cases by create_time hour bucket (09:00–10:00, …)",
+      ],
+      issue_resolution: [
+        "Case Duration — duration histogram + scatter coloured by xdm.issue.status.progress",
+        "Hourly volume — issues by create_time hour bucket",
+      ],
+      playbook_run_performance_rollup: [
+        "Playbook Run Performance — separate avg and median net duration charts (top 20 by avg)",
+        "Failure rate by playbook; failed run count by playbook",
+      ],
+      playbook_task_performance_rollup: [
+        "Playbook Task Performance — separate avg and median duration charts by task_id + task_playbook_id (axis shows task_name)",
+        "Error rate and error count by task (grouped by task_id + task_playbook_id + task_name)",
+      ],
+      playbook_task_errors: [
+        "Playbook Task Errors — error count by task_name (top 20)",
+        "Error count by script_name (top 15)",
+        "Hourly stacked bars coloured by task_name and script_name",
+      ],
+    };
+
+    function normalizeStatusProgress(value) {
+      const text = String(value || "").trim();
+      if (!text) return "(blank)";
+      const upper = text.toUpperCase();
+      if (STATUS_PROGRESS_COLORS[upper]) return upper;
+      const enumMatch = upper.match(/(?:ENUM\.)?([A-Z_]+)$/);
+      if (enumMatch && STATUS_PROGRESS_COLORS[enumMatch[1]]) return enumMatch[1];
+      if (enumMatch) return enumMatch[1];
+      return upper;
+    }
+
+    function statusProgressColor(status, autoColorIndex) {
+      const normalized = normalizeStatusProgress(status);
+      if (STATUS_PROGRESS_COLORS[normalized]) return STATUS_PROGRESS_COLORS[normalized];
+      if (!autoColorIndex.has(normalized)) {
+        autoColorIndex.set(normalized, autoColorIndex.size);
+      }
+      return AUTO_STATUS_COLORS[autoColorIndex.get(normalized) % AUTO_STATUS_COLORS.length];
+    }
+
+    function sampleColumnValues(rows, columnKey, limit = 80) {
+      const values = [];
+      for (const row of rows) {
+        const value = cellValue(row, columnKey);
+        if (value !== "") values.push(value);
+        if (values.length >= limit) break;
+      }
+      return values;
+    }
+
+    function isIntegerLike(value) {
+      const numeric = Number(value);
+      return !Number.isNaN(numeric) && Math.abs(numeric - Math.round(numeric)) < 1e-9;
+    }
+
+    function inferColumnType(rows, columnKey) {
+      const values = sampleColumnValues(rows, columnKey);
+      const nameHint = columnNameSuggestsTimestamp(columnKey);
+      if (!values.length) return nameHint ? "timestamp" : "empty";
+      let timestampCount = 0;
+      let integerCount = 0;
+      let numericCount = 0;
+      values.forEach((value) => {
+        if (parseTimestamp(value) != null) timestampCount += 1;
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) {
+          numericCount += 1;
+          if (isIntegerLike(value)) integerCount += 1;
+        }
+      });
+      const total = values.length;
+      if (timestampCount / total >= TYPE_MATCH_RATIO) return "timestamp";
+      if (nameHint && timestampCount > 0 && timestampCount / total >= HINTED_TIMESTAMP_RATIO) return "timestamp";
+      if (nameHint && timestampCount === total) return "timestamp";
+      if (integerCount / total >= TYPE_MATCH_RATIO) return "integer";
+      if (numericCount / total >= TYPE_MATCH_RATIO) return "number";
+      return "string";
+    }
+
+    function columnMeetsType(rows, columnKey, expectedTypes) {
+      const actual = inferColumnType(rows, columnKey);
+      return expectedTypes.includes(actual);
+    }
+
+    function clearExtraCharts() {
+      if (!els.extraCharts) return;
+      els.extraCharts.querySelectorAll(".plot").forEach((plot) => {
+        if (typeof Plotly !== "undefined") Plotly.purge(plot);
+      });
+      els.extraCharts.innerHTML = "";
+    }
+
+    function clearVisualization() {
+      state.generatedViz = null;
+      state.vizRows = [];
+      els.vizSection.classList.add("hidden");
+      document.getElementById("viz-stats").innerHTML = "";
+      clearExtraCharts();
+      if (typeof Plotly !== "undefined") {
+        Plotly.purge("histogram");
+        Plotly.purge("scatter");
+      }
+    }
+
+    function showVizLayout(layout) {
+      const isCaseDuration = layout === "case_duration";
+      els.durationControls.classList.toggle("hidden", !isCaseDuration);
+      els.mainCharts.classList.toggle("hidden", !isCaseDuration);
+    }
+
+    function mountExtraChart(chartId, title) {
+      const box = document.createElement("div");
+      box.className = "chart-box";
+      box.innerHTML = `<div class="chart-head"><h3>${escapeHtml(title)}</h3></div><div id="${chartId}" class="plot"></div>`;
+      els.extraCharts.appendChild(box);
+      return chartId;
+    }
+
+    function inferSchemaRecommendations(rows) {
+      const offers = VIZ_PROFILES.map((profile) => profile.detect(rows)).filter(Boolean);
+      return offers.map((offer) => offer.label);
+    }
+
+    function updateVizRecommendations(rows) {
+      if (!els.vizRecommendations) return;
+      const presetKey = els.builtinPreset.value;
+      const presetLines = PRESET_VIZ_RECOMMENDATIONS[presetKey] || [];
+      const detected = inferSchemaRecommendations(rows);
+      const lines = [];
+      if (presetLines.length) {
+        lines.push(`<strong>Suggested for this preset:</strong> ${presetLines.join("; ")}.`);
+      }
+      if (detected.length) {
+        lines.push(`<strong>Available now:</strong> ${detected.join(", ")}.`);
+      } else if (rows.length) {
+        lines.push("No automatic visualisations matched this schema.");
+      }
+      if (!lines.length) {
+        els.vizRecommendations.hidden = true;
+        els.vizRecommendations.innerHTML = "";
+        return;
+      }
+      els.vizRecommendations.hidden = false;
+      els.vizRecommendations.innerHTML = lines.join(" ");
+    }
+
+    function updateVisualizationOffers(rows) {
+      els.vizActions.innerHTML = "";
+      updateVizRecommendations(rows);
+      if (!rows.length) {
+        els.vizActions.innerHTML = '<span class="hint">Load results to see available visualisations.</span>';
+        return;
+      }
+      const offers = VIZ_PROFILES.map((profile) => profile.detect(rows)).filter(Boolean);
+      if (!offers.length) {
+        els.vizActions.innerHTML = '<span class="hint">No supported visualisations for this result set.</span>';
+        return;
+      }
+      offers.forEach((offer) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "secondary";
+        button.textContent = `Generate: ${offer.label}`;
+        button.addEventListener("click", () => generateVisualization(offer, rows));
+        els.vizActions.appendChild(button);
+      });
+    }
+
+    function generateVisualization(offer, rows) {
+      clearVisualization();
+      state.generatedViz = offer;
+      state.vizRows = offer.normalize(rows, offer.keys);
+      if (!state.vizRows.length) {
+        setStatus(`${offer.label}: no plottable rows after validation.`, "error");
+        updateVisualizationOffers(rows);
+        return;
+      }
+      els.vizSection.classList.remove("hidden");
+      els.vizProfileLabel.textContent = offer.label;
+      showVizLayout(offer.layout || "generic");
+      offer.render(state.vizRows, offer);
+      updateVisualizationOffers(rows);
+      setStatus(`Generated ${offer.label} visualisation (${state.vizRows.length} rows).`, "ok");
+    }
+
+    const MONTHS = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+
+    function parseTimestamp(value) {
+      const text = String(value || "").trim();
+      if (!text) return null;
+      const match = text.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\s+UTC)?$/);
+      if (match) {
+        const month = MONTHS[match[1].toLowerCase()];
+        if (month == null) return null;
+        return new Date(Number(match[3]), month, Number(match[2]), Number(match[4]), Number(match[5]), Number(match[6])).getTime();
+      }
+      // XQL API / TSV exports often use epoch millis (e.g. 1789227330000) rather than formatted strings.
+      if (/^\d{13}$/.test(text)) {
+        const ms = Number(text);
+        return Number.isFinite(ms) ? ms : null;
+      }
+      if (/^\d{10}$/.test(text)) {
+        const sec = Number(text);
+        return sec >= 946684800 ? sec * 1000 : null;
+      }
+      const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+      if (isoMatch) {
+        return new Date(
+          Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]),
+          Number(isoMatch[4]), Number(isoMatch[5]), Number(isoMatch[6]),
+        ).getTime();
+      }
+      // Bare small integers (e.g. duration minutes) must not fall through to Date.parse("0") etc.
+      if (/^\d+$/.test(text)) return null;
+      const parsed = Date.parse(text);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    function normalizeCaseDurationRows(rows, keys) {
+      const idKey = keys.idKey
+        || findColumnKey(rows, "xdm.case.id")
+        || findColumnKey(rows, "xdm.issue.id")
+        || findColumnKey(rows, "id");
+      return rows.map((row, index) => {
+        const createRaw = cellValue(row, keys.createKey);
+        const resolutionRaw = cellValue(row, keys.resolutionKey);
+        const createMs = parseTimestamp(createRaw);
+        const resolutionMs = parseTimestamp(resolutionRaw);
+        const durationRaw = cellValue(row, keys.durationKey);
+        const durationMinutes = durationRaw !== "" ? Number(durationRaw) : NaN;
+        const durationSeconds = durationMinutes * 60;
+        const statusProgress = keys.statusKey
+          ? normalizeStatusProgress(cellValue(row, keys.statusKey))
+          : "";
+        return {
+          id: idKey ? cellValue(row, idKey) : String(index + 1),
+          createTime: createRaw,
+          resolutionTime: resolutionRaw,
+          createMs,
+          resolutionMs,
+          durationMinutes,
+          durationSeconds,
+          statusProgress,
+        };
+      }).filter((row) => row.createMs != null && !Number.isNaN(row.durationMinutes));
+    }
+
+    function caseDurationHistogramRows(rows, offer) {
+      if (offer && offer.useStatusColor) {
+        return rows.filter((row) => row.statusProgress === "RESOLVED");
+      }
+      return rows;
+    }
+
+    const STATUS_PROGRESS_COLUMNS = [
+      "xdm.case.status_progress",
+      "xdm.issue.status.progress",
+      "status_progress",
+    ];
+
+    function findStatusProgressKey(rows) {
+      for (const name of STATUS_PROGRESS_COLUMNS) {
+        const key = findColumnKey(rows, name);
+        if (key) return key;
+      }
+      return null;
+    }
+
+    function statusColumnUsable(rows, statusKey) {
+      if (!statusKey) return false;
+      return rows.some((row) => String(cellValue(row, statusKey) || "").trim() !== "");
+    }
+
+    function detectCaseDurationOffer(rows) {
+      const createKey = findColumnKey(rows, "create_time");
+      const resolutionKey = findColumnKey(rows, "resolution_time");
+      const durationKey = findColumnKey(rows, "duration");
+      if (!createKey || !resolutionKey || !durationKey) return null;
+      if (!columnMeetsType(rows, createKey, ["timestamp"])) return null;
+      if (!columnMeetsType(rows, resolutionKey, ["timestamp"])) return null;
+      if (!columnMeetsType(rows, durationKey, ["integer", "number"])) return null;
+
+      const statusKey = findStatusProgressKey(rows);
+      const useStatusColor = statusColumnUsable(rows, statusKey);
+      const keys = {
+        createKey,
+        resolutionKey,
+        durationKey,
+        statusKey,
+        statusKeyLabel: statusKey || "",
+        idKey: findColumnKey(rows, "xdm.case.id")
+          || findColumnKey(rows, "xdm.issue.id")
+          || findColumnKey(rows, "id"),
+      };
+      const normalized = normalizeCaseDurationRows(rows, keys);
+      if (!normalized.length) return null;
+
+      return {
+        id: "case_duration",
+        label: "Case Duration",
+        layout: "case_duration",
+        keys,
+        useStatusColor: Boolean(useStatusColor),
+        normalize: normalizeCaseDurationRows,
+        render: renderCaseDurationViz,
+      };
+    }
+
+    function findTimestampKey(rows) {
+      const hints = ["_time", "start_date", "create_time", "resolution_time", "_insert_time", "issue_create_time"];
+      for (const hint of hints) {
+        const key = findColumnKey(rows, hint);
+        if (key && columnMeetsType(rows, key, ["timestamp"])) return key;
+      }
+      return null;
+    }
+
+    function isAggregatedResult(rows) {
+      return Boolean(findColumnKey(rows, "run_count") || findColumnKey(rows, "task_run_count"));
+    }
+
+    function hourBucketDayKey(startMs) {
+      const date = new Date(startMs);
+      return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    }
+
+    function hourBucketsSpanMultipleDays(bucketStarts) {
+      const days = new Set(bucketStarts.map((startMs) => hourBucketDayKey(startMs)));
+      return days.size > 1;
+    }
+
+    function formatHourBucketLabel(startMs, includeDate = false) {
+      const start = new Date(startMs);
+      const end = new Date(startMs + 3600000);
+      const pad = (value) => String(value).padStart(2, "0");
+      const timePart = `${pad(start.getHours())}:${pad(start.getMinutes())}–${pad(end.getHours())}:${pad(end.getMinutes())}`;
+      if (!includeDate) return timePart;
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${months[start.getMonth()]} ${start.getDate()} ${timePart}`;
+    }
+
+    function hourBucketStartMs(ms) {
+      const date = new Date(ms);
+      return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        date.getHours(),
+        0,
+        0,
+        0,
+      ).getTime();
+    }
+
+    function bucketRowsByHour(rows, timeKey) {
+      const buckets = new Map();
+      rows.forEach((row) => {
+        const ms = parseTimestamp(cellValue(row, timeKey));
+        if (ms == null) return;
+        const bucketStart = hourBucketStartMs(ms);
+        buckets.set(bucketStart, (buckets.get(bucketStart) || 0) + 1);
+      });
+      const sorted = [...buckets.entries()].sort((left, right) => left[0] - right[0]);
+      const includeDate = hourBucketsSpanMultipleDays(sorted.map(([startMs]) => startMs));
+      return sorted.map(([startMs, count]) => ({
+        startMs,
+        label: formatHourBucketLabel(startMs, includeDate),
+        count,
+      }));
+    }
+
+    function buildHourlyStackedSeries(rows, timeKey, fieldKey, topLimit = 10) {
+      if (!timeKey || !fieldKey) return null;
+      const fieldTotals = countByField(rows, fieldKey);
+      const topLabels = fieldTotals.slice(0, topLimit).map((entry) => entry.label);
+      const topLabelSet = new Set(topLabels);
+      const includeOther = fieldTotals.length > topLimit;
+      const seriesLabels = includeOther ? [...topLabels, "Other"] : topLabels;
+      const bucketSeries = new Map();
+      rows.forEach((row) => {
+        const ms = parseTimestamp(cellValue(row, timeKey));
+        if (ms == null) return;
+        const bucketStart = hourBucketStartMs(ms);
+        const rawLabel = String(cellValue(row, fieldKey) || "(blank)");
+        const label = topLabelSet.has(rawLabel) ? rawLabel : (includeOther ? "Other" : rawLabel);
+        if (!bucketSeries.has(bucketStart)) bucketSeries.set(bucketStart, new Map());
+        const hourMap = bucketSeries.get(bucketStart);
+        hourMap.set(label, (hourMap.get(label) || 0) + 1);
+      });
+      const sortedHours = [...bucketSeries.keys()].sort((left, right) => left - right);
+      if (!sortedHours.length) return { traces: [] };
+      const includeDate = hourBucketsSpanMultipleDays(sortedHours);
+      const hourLabels = sortedHours.map((startMs) => formatHourBucketLabel(startMs, includeDate));
+      const colorIndex = new Map();
+      const traces = seriesLabels.map((seriesLabel) => ({
+        x: hourLabels,
+        y: sortedHours.map((hourMs) => bucketSeries.get(hourMs).get(seriesLabel) || 0),
+        name: seriesLabel,
+        type: "bar",
+        marker: {
+          color: seriesLabel === "Other" ? "#abb2bf" : statusProgressColor(seriesLabel, colorIndex),
+          line: { color: "#0f1419", width: 1 },
+        },
+        hovertemplate: "%{fullData.name}<br>%{x}<br>count: %{y}<extra></extra>",
+      }));
+      return { traces };
+    }
+
+    const axisTooltipHandlers = new WeakMap();
+    let barAxisTooltipEl = null;
+
+    function formatBarTooltipValue(value) {
+      if (value == null || Number.isNaN(value)) return "—";
+      if (typeof value === "number" && !Number.isInteger(value)) return value.toFixed(3);
+      return String(value);
+    }
+
+    function buildSingleSeriesAxisTooltips(labels, values, yTitle, prefixLines = []) {
+      return labels.map((label, index) => [
+        ...prefixLines[index] || [],
+        label,
+        `${yTitle}: ${formatBarTooltipValue(values[index])}`,
+      ].join("\n"));
+    }
+
+    function buildGroupedSeriesAxisTooltips(labels, seriesList, prefixLines = []) {
+      return labels.map((label, index) => {
+        const lines = [...prefixLines[index] || [], label];
+        seriesList.forEach((series) => {
+          lines.push(`${series.name}: ${formatBarTooltipValue(series.values[index])}`);
+        });
+        return lines.join("\n");
+      });
+    }
+
+    function buildStackedSeriesAxisTooltips(traces) {
+      if (!traces.length) return [];
+      const labels = traces[0].x || [];
+      return labels.map((label, index) => {
+        const lines = [label];
+        let total = 0;
+        traces.forEach((trace) => {
+          const value = Number(trace.y[index]) || 0;
+          total += value;
+          if (value) lines.push(`${trace.name}: ${value}`);
+        });
+        lines.push(`Total: ${total}`);
+        return lines.join("\n");
+      });
+    }
+
+    function ensureBarAxisTooltip() {
+      if (!barAxisTooltipEl) {
+        barAxisTooltipEl = document.createElement("div");
+        barAxisTooltipEl.className = "preset-query-tooltip hidden";
+        barAxisTooltipEl.setAttribute("role", "tooltip");
+        document.body.appendChild(barAxisTooltipEl);
+      }
+      return barAxisTooltipEl;
+    }
+
+    function hideBarAxisTooltip() {
+      if (barAxisTooltipEl) barAxisTooltipEl.classList.add("hidden");
+    }
+
+    function positionBarAxisTooltip(event) {
+      const tooltip = ensureBarAxisTooltip();
+      const margin = 10;
+      let left = event.clientX + margin;
+      let top = event.clientY + margin;
+      tooltip.style.left = "0";
+      tooltip.style.top = "0";
+      tooltip.classList.remove("hidden");
+      const tipRect = tooltip.getBoundingClientRect();
+      if (left + tipRect.width > window.innerWidth - margin) {
+        left = event.clientX - tipRect.width - margin;
+      }
+      if (top + tipRect.height > window.innerHeight - margin) {
+        top = event.clientY - tipRect.height - margin;
+      }
+      tooltip.style.left = `${Math.max(margin, left)}px`;
+      tooltip.style.top = `${Math.max(margin, top)}px`;
+    }
+
+    function showBarAxisTooltip(event, tip) {
+      ensureBarAxisTooltip().textContent = tip;
+      positionBarAxisTooltip(event);
+    }
+
+    function styleAxisTicks(ticks, tooltipsByIndex) {
+      ticks.forEach((tick, index) => {
+        const hasTip = Boolean(tooltipsByIndex[index]);
+        tick.querySelectorAll(".axis-hit-area").forEach((el) => el.remove());
+        tick.style.cursor = hasTip ? "help" : "";
+        tick.style.pointerEvents = hasTip ? "all" : "";
+        tick.querySelectorAll("text").forEach((textEl) => {
+          textEl.style.cursor = hasTip ? "help" : "";
+          textEl.style.pointerEvents = hasTip ? "all" : "";
+        });
+        if (!hasTip) return;
+        const textEl = tick.querySelector("text");
+        if (!textEl) return;
+        try {
+          const bbox = textEl.getBBox();
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.classList.add("axis-hit-area");
+          rect.setAttribute("x", String(bbox.x - 6));
+          rect.setAttribute("y", String(bbox.y - 6));
+          rect.setAttribute("width", String(Math.max(bbox.width + 12, 12)));
+          rect.setAttribute("height", String(Math.max(bbox.height + 12, 12)));
+          rect.setAttribute("fill", "transparent");
+          const transform = textEl.getAttribute("transform");
+          if (transform) rect.setAttribute("transform", transform);
+          rect.style.pointerEvents = "all";
+          rect.style.cursor = "help";
+          tick.insertBefore(rect, textEl);
+        } catch (_) {
+          /* getBBox can fail before layout */
+        }
+      });
+    }
+
+    function queryXAxisTicks(plot) {
+      let ticks = plot.querySelectorAll(".xaxislayer-above .xtick");
+      if (!ticks.length) ticks = plot.querySelectorAll(".xaxislayer-below .xtick");
+      if (!ticks.length) ticks = plot.querySelectorAll(".xtick");
+      return [...ticks];
+    }
+
+    function ensurePlotAxisTooltipHandlers(plot) {
+      if (axisTooltipHandlers.has(plot)) return;
+      const onMouseOver = (event) => {
+        const tick = event.target.closest?.(".xtick");
+        if (!tick || !plot._axisTickNodes?.includes(tick)) return;
+        const tip = plot._axisTooltipsByIndex?.[plot._axisTickNodes.indexOf(tick)];
+        if (!tip) return;
+        showBarAxisTooltip(event, tip);
+      };
+      const onMouseMove = (event) => {
+        if (!barAxisTooltipEl || barAxisTooltipEl.classList.contains("hidden")) return;
+        if (!event.target.closest?.(".xtick")) return;
+        positionBarAxisTooltip(event);
+      };
+      const onMouseOut = (event) => {
+        const related = event.relatedTarget;
+        if (related && plot.contains(related) && related.closest?.(".xtick")) return;
+        hideBarAxisTooltip();
+      };
+      plot.addEventListener("mouseover", onMouseOver);
+      plot.addEventListener("mousemove", onMouseMove);
+      plot.addEventListener("mouseout", onMouseOut);
+      axisTooltipHandlers.set(plot, { onMouseOver, onMouseMove, onMouseOut });
+    }
+
+    function attachBarAxisTooltips(chartId, tooltipsByIndex) {
+      const plot = document.getElementById(chartId);
+      if (!plot || !tooltipsByIndex?.length) return;
+      plot._axisTooltipsByIndex = tooltipsByIndex;
+      ensurePlotAxisTooltipHandlers(plot);
+      const refreshAxisTicks = () => {
+        plot._axisTickNodes = queryXAxisTicks(plot);
+        styleAxisTicks(plot._axisTickNodes, plot._axisTooltipsByIndex || []);
+        plot.querySelectorAll(".xaxislayer-above, .xaxislayer-below").forEach((layer) => {
+          layer.style.pointerEvents = "all";
+        });
+      };
+      refreshAxisTicks();
+      requestAnimationFrame(refreshAxisTicks);
+      if (!plot._axisTooltipAfterPlotBound) {
+        plot.on("plotly_afterplot", refreshAxisTicks);
+        plot._axisTooltipAfterPlotBound = true;
+      }
+    }
+
+    function finalizeBarChart(chartId, tooltipsByIndex) {
+      attachBarAxisTooltips(chartId, tooltipsByIndex);
+    }
+
+    function renderHourlyBarChart(chartId, buckets, yTitle) {
+      const emptyLayout = {
+        ...plotLayoutBase,
+        annotations: [{
+          text: "No timestamp rows to plot",
+          xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false,
+          font: { color: "#93a4b5", size: 13 },
+        }],
+      };
+      if (!buckets.length) {
+        Plotly.react(chartId, [], emptyLayout, { responsive: true, displaylogo: false });
+        return;
+      }
+      const labels = buckets.map((bucket) => bucket.label);
+      const values = buckets.map((bucket) => bucket.count);
+      const countTitle = yTitle || "Count";
+      Plotly.react(chartId, [{
+        x: labels,
+        y: values,
+        type: "bar",
+        marker: { color: "#5b9fd4", line: { color: "#0f1419", width: 1 } },
+        hovertemplate: "%{x}<br>count: %{y}<extra></extra>",
+      }], plotLayoutWithSlantedXAxis({ xTitle: "Hour window", yTitle: countTitle }), { responsive: true, displaylogo: false })
+        .then(() => finalizeBarChart(chartId, buildSingleSeriesAxisTooltips(labels, values, countTitle)));
+    }
+
+    function renderGenericBarChart(chartId, labels, values, options = {}) {
+      const yTitle = options.yTitle || "Value";
+      const xValues = options.xValues || labels;
+      const axisLabels = options.axisLabels || labels;
+      const axisTooltips = options.axisTooltips
+        || buildSingleSeriesAxisTooltips(axisLabels, values, yTitle, options.axisTooltipPrefix);
+      Plotly.react(chartId, [{
+        x: xValues,
+        y: values,
+        type: "bar",
+        marker: { color: options.color || "#5b9fd4", line: { color: "#0f1419", width: 1 } },
+        hovertemplate: `${options.hoverLabelKey ? `%{customdata}<br>` : ""}%{y}<extra></extra>`,
+        customdata: options.hoverLabelKey
+          ? axisLabels
+          : undefined,
+      }], plotLayoutWithSlantedXAxis({
+        xTitle: options.xTitle || "",
+        yTitle,
+        barmode: "group",
+        tickvals: options.xValues ? xValues : undefined,
+        ticktext: options.xValues ? axisLabels : undefined,
+      }), { responsive: true, displaylogo: false })
+        .then(() => finalizeBarChart(chartId, axisTooltips));
+    }
+
+    function plotLayoutWithSlantedXAxisGrouped(options = {}) {
+      return {
+        ...plotLayoutWithSlantedXAxis({ ...options, bottomMargin: 150 }),
+        barmode: "group",
+        showlegend: true,
+        legend: {
+          orientation: "h",
+          y: -0.28,
+          x: 0,
+          font: { size: 10 },
+        },
+      };
+    }
+
+    function renderGroupedBarChart(chartId, labels, seriesList, options = {}) {
+      const yTitle = options.yTitle || "Value";
+      const axisTooltips = options.axisTooltips
+        || buildGroupedSeriesAxisTooltips(labels, seriesList, options.axisTooltipPrefix);
+      Plotly.react(chartId, seriesList.map((series) => ({
+        name: series.name,
+        x: labels,
+        y: series.values,
+        type: "bar",
+        marker: { color: series.color, line: { color: "#0f1419", width: 1 } },
+        hovertemplate: `${series.name}<br>%{x}<br>%{y}<extra></extra>`,
+      })), plotLayoutWithSlantedXAxisGrouped({
+        xTitle: options.xTitle || "",
+        yTitle,
+      }), { responsive: true, displaylogo: false })
+        .then(() => finalizeBarChart(chartId, axisTooltips));
+    }
+
+    function numericValuesForLabels(rows, labelKey, valueKey, labels) {
+      const valueByLabel = new Map(
+        rows.map((row) => [String(cellValue(row, labelKey) || "(blank)"), Number(cellValue(row, valueKey))]),
+      );
+      return labels.map((label) => {
+        const value = valueByLabel.get(label);
+        return value == null || Number.isNaN(value) ? null : value;
+      });
+    }
+
+    function numericValuesByGroupId(rows, groupKey, valueKey, groupIds) {
+      const valueByGroup = new Map(
+        rows.map((row) => [String(cellValue(row, groupKey) || "(blank)"), Number(cellValue(row, valueKey))]),
+      );
+      return groupIds.map((groupId) => {
+        const value = valueByGroup.get(groupId);
+        return value == null || Number.isNaN(value) ? null : value;
+      });
+    }
+
+    function renderStackedBarChart(chartId, traces, options = {}) {
+      const emptyLayout = {
+        ...plotLayoutBase,
+        annotations: [{
+          text: "No rows to plot",
+          xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false,
+          font: { color: "#93a4b5", size: 13 },
+        }],
+      };
+      if (!traces.length) {
+        Plotly.react(chartId, [], emptyLayout, { responsive: true, displaylogo: false });
+        return;
+      }
+      const yTitle = options.yTitle || "Count";
+      Plotly.react(chartId, traces, plotLayoutWithSlantedXAxisStacked({
+        xTitle: options.xTitle || "Hour window",
+        yTitle,
+      }), { responsive: true, displaylogo: false })
+        .then(() => finalizeBarChart(chartId, buildStackedSeriesAxisTooltips(traces)));
+    }
+
+    function topRowsByNumeric(rows, labelKey, valueKey, limit = 20) {
+      return rows
+        .map((row) => ({
+          label: String(cellValue(row, labelKey) || "(blank)"),
+          value: Number(cellValue(row, valueKey)),
+        }))
+        .filter((entry) => !Number.isNaN(entry.value))
+        .sort((left, right) => right.value - left.value)
+        .slice(0, limit);
+    }
+
+    function topRowsByGroup(rows, groupKey, displayKey, valueKey, limit = 20) {
+      return rows
+        .map((row) => ({
+          groupId: String(cellValue(row, groupKey) || "(blank)"),
+          label: String(cellValue(row, displayKey) || cellValue(row, groupKey) || "(blank)"),
+          value: Number(cellValue(row, valueKey)),
+          row,
+        }))
+        .filter((entry) => !Number.isNaN(entry.value))
+        .sort((left, right) => right.value - left.value)
+        .slice(0, limit);
+    }
+
+    const TASK_GROUP_FIELD = "__task_group_id__";
+
+    function playbookTaskCompositeId(row, keys) {
+      return [
+        cellValue(row, keys.taskIdKey),
+        cellValue(row, keys.taskPlaybookIdKey),
+        cellValue(row, keys.taskNameKey),
+      ].map((part) => String(part ?? "").trim()).join("\u0001");
+    }
+
+    function aggregatePlaybookTaskRows(rows, keys) {
+      if (!keys.taskIdKey && !keys.taskPlaybookIdKey && !keys.taskNameKey) return rows;
+
+      const buckets = new Map();
+      rows.forEach((row) => {
+        const groupId = playbookTaskCompositeId(row, keys);
+        const runCount = Number(cellValue(row, keys.countKey)) || 0;
+        if (!buckets.has(groupId)) {
+          buckets.set(groupId, {
+            taskId: cellValue(row, keys.taskIdKey),
+            taskPlaybookId: cellValue(row, keys.taskPlaybookIdKey),
+            taskName: String(cellValue(row, keys.taskNameKey) || "").trim(),
+            totalRuns: 0,
+            totalErrors: 0,
+            totalCompleted: 0,
+            weightedAvgDuration: 0,
+            weightedMedianDuration: 0,
+          });
+        }
+        const bucket = buckets.get(groupId);
+        bucket.totalRuns += runCount;
+        if (keys.errorKey) bucket.totalErrors += Number(cellValue(row, keys.errorKey)) || 0;
+        if (keys.completedKey) bucket.totalCompleted += Number(cellValue(row, keys.completedKey)) || 0;
+
+        const avg = Number(cellValue(row, keys.avgKey));
+        if (!Number.isNaN(avg) && runCount) bucket.weightedAvgDuration += avg * runCount;
+        if (keys.medianKey) {
+          const median = Number(cellValue(row, keys.medianKey));
+          if (!Number.isNaN(median) && runCount) bucket.weightedMedianDuration += median * runCount;
+        }
+
+        const taskName = String(cellValue(row, keys.taskNameKey) || "").trim();
+        if (taskName) bucket.taskName = taskName;
+      });
+
+      return [...buckets.entries()].map(([groupId, bucket]) => {
+        const result = {
+          [TASK_GROUP_FIELD]: groupId,
+          [keys.countKey]: bucket.totalRuns,
+          [keys.avgKey]: bucket.totalRuns ? bucket.weightedAvgDuration / bucket.totalRuns : 0,
+        };
+        if (keys.taskIdKey) result[keys.taskIdKey] = bucket.taskId;
+        if (keys.taskPlaybookIdKey) result[keys.taskPlaybookIdKey] = bucket.taskPlaybookId;
+        if (keys.taskNameKey) {
+          result[keys.taskNameKey] = bucket.taskName
+            || String(bucket.taskId ?? bucket.taskPlaybookId ?? "(blank)");
+        }
+        if (keys.medianKey) {
+          result[keys.medianKey] = bucket.totalRuns ? bucket.weightedMedianDuration / bucket.totalRuns : 0;
+        }
+        if (keys.errorKey) result[keys.errorKey] = bucket.totalErrors;
+        if (keys.completedKey) result[keys.completedKey] = bucket.totalCompleted;
+        if (keys.errorRateKey && bucket.totalRuns) {
+          result[keys.errorRateKey] = bucket.totalErrors / bucket.totalRuns;
+        }
+        return result;
+      });
+    }
+
+    function taskAxisTooltipPrefix(entries, keys) {
+      return entries.map((entry) => {
+        const lines = [`task_name: ${entry.label}`];
+        if (keys?.taskIdKey) lines.push(`task_id: ${cellValue(entry.row, keys.taskIdKey)}`);
+        if (keys?.taskPlaybookIdKey) {
+          lines.push(`task_playbook_id: ${cellValue(entry.row, keys.taskPlaybookIdKey)}`);
+        }
+        return lines;
+      });
+    }
+
+    function renderPlaybookTaskBarChart(chartId, entries, values, offer, yTitle, color) {
+      const labels = entries.map((entry) => entry.label);
+      const xValues = entries.map((entry) => entry.groupId);
+      renderGenericBarChart(
+        chartId,
+        labels,
+        values,
+        {
+          yTitle,
+          color,
+          xValues,
+          axisLabels: labels,
+          hoverLabelKey: true,
+          axisTooltipPrefix: taskAxisTooltipPrefix(entries, offer.keys),
+        },
+      );
+    }
+
+    function countByField(rows, fieldKey) {
+      const counts = new Map();
+      rows.forEach((row) => {
+        const label = String(cellValue(row, fieldKey) || "(blank)");
+        counts.set(label, (counts.get(label) || 0) + 1);
+      });
+      return [...counts.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .map(([label, count]) => ({ label, count }));
+    }
+
+    function sumByField(rows, labelKey, valueKey) {
+      const totals = new Map();
+      rows.forEach((row) => {
+        const label = String(cellValue(row, labelKey) || "(blank)");
+        const value = Number(cellValue(row, valueKey));
+        if (Number.isNaN(value)) return;
+        totals.set(label, (totals.get(label) || 0) + value);
+      });
+      return [...totals.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .map(([label, total]) => ({ label, total }));
+    }
+
+    function detectHourlyVolumeOffer(rows) {
+      if (isAggregatedResult(rows)) return null;
+      const timeKey = findTimestampKey(rows);
+      if (!timeKey) return null;
+      const normalized = rows.filter((row) => parseTimestamp(cellValue(row, timeKey)) != null);
+      if (!normalized.length) return null;
+      return {
+        id: "hourly_volume",
+        label: "Hourly volume",
+        layout: "generic",
+        keys: { timeKey, timeKeyLabel: timeKey },
+        normalize: (_rows, keys) => _rows.filter((row) => parseTimestamp(cellValue(row, keys.timeKey)) != null),
+        render: renderHourlyVolumeViz,
+      };
+    }
+
+    function renderHourlyVolumeViz(rows, offer) {
+      clearExtraCharts();
+      document.getElementById("viz-stats").innerHTML = "";
+      const buckets = bucketRowsByHour(rows, offer.keys.timeKey);
+      const chartId = mountExtraChart("hourly-volume-chart", `Hourly volume (${offer.keys.timeKeyLabel})`);
+      renderHourlyBarChart(chartId, buckets, "Row count");
+    }
+
+    function detectPlaybookRunPerformanceOffer(rows) {
+      const playbookKey = findColumnKey(rows, "playbook_name");
+      const avgKey = findColumnKey(rows, "avg_net_duration_sec");
+      const countKey = findColumnKey(rows, "run_count");
+      if (!playbookKey || !avgKey || !countKey) return null;
+      return {
+        id: "playbook_run_perf",
+        label: "Playbook Run Performance",
+        layout: "generic",
+        keys: {
+          playbookKey,
+          avgKey,
+          medianKey: findColumnKey(rows, "median_net_duration_sec"),
+          countKey,
+          statusKey: findColumnKey(rows, "playbook_status"),
+          failureRateKey: findColumnKey(rows, "failure_rate"),
+          failedKey: findColumnKey(rows, "failed_count"),
+        },
+        normalize: (inputRows) => inputRows,
+        render: renderPlaybookRunPerfViz,
+      };
+    }
+
+    function renderPlaybookRunPerfViz(rows, offer) {
+      clearExtraCharts();
+      document.getElementById("viz-stats").innerHTML = "";
+      const topDuration = topRowsByNumeric(rows, offer.keys.playbookKey, offer.keys.avgKey, 20);
+      const durationLabels = topDuration.map((entry) => entry.label);
+      const avgValues = topDuration.map((entry) => entry.value);
+      renderGenericBarChart(
+        mountExtraChart("playbook-run-avg-duration-chart", "Avg net duration by playbook (top 20)"),
+        durationLabels,
+        avgValues,
+        { yTitle: "avg_net_duration_sec", color: "#5b9fd4" },
+      );
+      if (offer.keys.medianKey) {
+        renderGenericBarChart(
+          mountExtraChart("playbook-run-median-duration-chart", "Median net duration by playbook (top 20 by avg)"),
+          durationLabels,
+          numericValuesForLabels(rows, offer.keys.playbookKey, offer.keys.medianKey, durationLabels),
+          { yTitle: "median_net_duration_sec", color: "#7dd3a8" },
+        );
+      }
+
+      if (offer.keys.statusKey) {
+        const statusTotals = sumByField(rows, offer.keys.statusKey, offer.keys.countKey);
+        renderGenericBarChart(
+          mountExtraChart("playbook-run-status-chart", "Run count by playbook_status"),
+          statusTotals.map((entry) => entry.label),
+          statusTotals.map((entry) => entry.total),
+          { yTitle: "run_count", color: "#7dd3a8" },
+        );
+      }
+
+      if (offer.keys.failureRateKey) {
+        const topFailure = topRowsByNumeric(rows, offer.keys.playbookKey, offer.keys.failureRateKey, 20);
+        renderGenericBarChart(
+          mountExtraChart("playbook-run-failure-chart", "Failure rate by playbook (top 20)"),
+          topFailure.map((entry) => entry.label),
+          topFailure.map((entry) => entry.value),
+          { yTitle: "failure_rate", color: "#f07178" },
+        );
+      }
+
+      if (offer.keys.failedKey && offer.keys.countKey) {
+        const topFailed = topRowsByNumeric(rows, offer.keys.playbookKey, offer.keys.failedKey, 20);
+        renderGenericBarChart(
+          mountExtraChart("playbook-run-failed-count-chart", "Failed runs by playbook (top 20)"),
+          topFailed.map((entry) => entry.label),
+          topFailed.map((entry) => entry.value),
+          { yTitle: "failed_count", color: "#e6c07b" },
+        );
+      }
+    }
+
+    function detectPlaybookTaskPerformanceOffer(rows) {
+      const taskIdKey = findColumnKey(rows, "task_id");
+      const taskNameKey = findColumnKey(rows, "task_name");
+      const taskPlaybookIdKey = findColumnKey(rows, "task_playbook_id");
+      const avgKey = findColumnKey(rows, "avg_duration_sec");
+      const countKey = findColumnKey(rows, "task_run_count");
+      if ((!taskIdKey && !taskNameKey && !taskPlaybookIdKey) || !avgKey || !countKey) return null;
+      return {
+        id: "playbook_task_perf",
+        label: "Playbook Task Performance",
+        layout: "generic",
+        keys: {
+          groupKey: TASK_GROUP_FIELD,
+          displayKey: taskNameKey || taskIdKey || taskPlaybookIdKey,
+          taskIdKey,
+          taskNameKey,
+          taskPlaybookIdKey,
+          avgKey,
+          medianKey: findColumnKey(rows, "median_duration_sec"),
+          countKey,
+          statusKey: findColumnKey(rows, "task_status"),
+          errorRateKey: findColumnKey(rows, "error_rate"),
+          errorKey: findColumnKey(rows, "error_count"),
+          completedKey: findColumnKey(rows, "completed_count"),
+        },
+        normalize: (inputRows, keys) => aggregatePlaybookTaskRows(inputRows, keys),
+        render: renderPlaybookTaskPerfViz,
+      };
+    }
+
+    function renderPlaybookTaskPerfViz(rows, offer) {
+      clearExtraCharts();
+      document.getElementById("viz-stats").innerHTML = "";
+      const topDuration = topRowsByGroup(
+        rows,
+        offer.keys.groupKey,
+        offer.keys.displayKey,
+        offer.keys.avgKey,
+        20,
+      );
+      renderPlaybookTaskBarChart(
+        mountExtraChart("playbook-task-avg-duration-chart", "Avg duration by task (top 20 by avg)"),
+        topDuration,
+        topDuration.map((entry) => entry.value),
+        offer,
+        "avg_duration_sec",
+        "#5b9fd4",
+      );
+      if (offer.keys.medianKey) {
+        renderPlaybookTaskBarChart(
+          mountExtraChart("playbook-task-median-duration-chart", "Median duration by task (top 20 by avg)"),
+          topDuration,
+          numericValuesByGroupId(
+            rows,
+            offer.keys.groupKey,
+            offer.keys.medianKey,
+            topDuration.map((entry) => entry.groupId),
+          ),
+          offer,
+          "median_duration_sec",
+          "#7dd3a8",
+        );
+      }
+
+      if (offer.keys.statusKey) {
+        const statusTotals = sumByField(rows, offer.keys.statusKey, offer.keys.countKey);
+        renderGenericBarChart(
+          mountExtraChart("playbook-task-status-chart", "Task run count by task_status"),
+          statusTotals.map((entry) => entry.label),
+          statusTotals.map((entry) => entry.total),
+          { yTitle: "task_run_count", color: "#7dd3a8" },
+        );
+      }
+
+      if (offer.keys.errorRateKey) {
+        const topErrors = topRowsByGroup(
+          rows,
+          offer.keys.groupKey,
+          offer.keys.displayKey,
+          offer.keys.errorRateKey,
+          20,
+        );
+        renderPlaybookTaskBarChart(
+          mountExtraChart("playbook-task-error-rate-chart", "Error rate by task (top 20)"),
+          topErrors,
+          topErrors.map((entry) => entry.value),
+          offer,
+          "error_rate",
+          "#f07178",
+        );
+      }
+
+      if (offer.keys.errorKey && offer.keys.completedKey) {
+        const topErrorCounts = topRowsByGroup(
+          rows,
+          offer.keys.groupKey,
+          offer.keys.displayKey,
+          offer.keys.errorKey,
+          15,
+        );
+        renderPlaybookTaskBarChart(
+          mountExtraChart("playbook-task-error-count-chart", "Error count by task (top 15)"),
+          topErrorCounts,
+          topErrorCounts.map((entry) => entry.value),
+          offer,
+          "error_count",
+          "#f07178",
+        );
+      }
+    }
+
+    function detectPlaybookTaskErrorsOffer(rows) {
+      if (isAggregatedResult(rows)) return null;
+      const taskKey = findColumnKey(rows, "task_name");
+      const scriptKey = findColumnKey(rows, "script_name");
+      const statusKey = findColumnKey(rows, "task_status");
+      if (!taskKey) return null;
+      const hasErrorSignal = (statusKey && rows.some((row) => String(cellValue(row, statusKey)).includes("Error")))
+        || rows.some((row) => String(cellValue(row, "error") || cellValue(row, "errors") || "").trim());
+      if (!hasErrorSignal && !findColumnKey(rows, "error")) return null;
+      return {
+        id: "playbook_task_errors",
+        label: "Playbook Task Errors",
+        layout: "generic",
+        keys: {
+          taskKey,
+          scriptKey,
+          timeKey: findTimestampKey(rows),
+        },
+        normalize: (inputRows) => inputRows,
+        render: renderPlaybookTaskErrorsViz,
+      };
+    }
+
+    function renderPlaybookTaskErrorsViz(rows, offer) {
+      clearExtraCharts();
+      document.getElementById("viz-stats").innerHTML = "";
+
+      const taskCounts = countByField(rows, offer.keys.taskKey).slice(0, 20);
+      renderGenericBarChart(
+        mountExtraChart("playbook-task-error-count-chart", "Error count by task_name (top 20)"),
+        taskCounts.map((entry) => entry.label),
+        taskCounts.map((entry) => entry.count),
+        { yTitle: "Error rows", color: "#f07178" },
+      );
+
+      if (offer.keys.scriptKey) {
+        const scriptCounts = countByField(rows, offer.keys.scriptKey).slice(0, 15);
+        renderGenericBarChart(
+          mountExtraChart("playbook-task-script-error-chart", "Error count by script_name (top 15)"),
+          scriptCounts.map((entry) => entry.label),
+          scriptCounts.map((entry) => entry.count),
+          { yTitle: "Error rows", color: "#e6c07b" },
+        );
+      }
+
+      if (offer.keys.timeKey) {
+        const taskSeries = buildHourlyStackedSeries(rows, offer.keys.timeKey, offer.keys.taskKey, 10);
+        renderStackedBarChart(
+          mountExtraChart("playbook-task-error-hourly-task-chart", `Hourly errors by task_name (${offer.keys.timeKey})`),
+          taskSeries ? taskSeries.traces : [],
+          { yTitle: "Error rows" },
+        );
+
+        if (offer.keys.scriptKey) {
+          const scriptSeries = buildHourlyStackedSeries(rows, offer.keys.timeKey, offer.keys.scriptKey, 10);
+          renderStackedBarChart(
+            mountExtraChart("playbook-task-error-hourly-script-chart", `Hourly errors by script_name (${offer.keys.timeKey})`),
+            scriptSeries ? scriptSeries.traces : [],
+            { yTitle: "Error rows" },
+          );
+        }
+      }
+    }
+
+    const VIZ_PROFILES = [
+      { detect: detectCaseDurationOffer },
+      { detect: detectHourlyVolumeOffer },
+      { detect: detectPlaybookRunPerformanceOffer },
+      { detect: detectPlaybookTaskPerformanceOffer },
+      { detect: detectPlaybookTaskErrorsOffer },
+    ];
+
+    function usingSeconds() { return els.durationUnit.value === "seconds"; }
+    function durationValues(rows) { return rows.map((row) => (usingSeconds() ? row.durationSeconds : row.durationMinutes)); }
+
+    function renderCaseDurationViz(rows, offer) {
+      clearExtraCharts();
+      const scatterRows = rows;
+      const histogramRows = caseDurationHistogramRows(rows, offer);
+      const values = durationValues(histogramRows).slice().sort((a, b) => a - b);
+      const stats = [
+        ["count", values.length, true],
+        ["mean", mean(values)],
+        ["min", values[0]],
+        ["p50", percentile(values, 50)],
+        ["p90", percentile(values, 90)],
+        ["p95", percentile(values, 95)],
+        ["max", values[values.length - 1]],
+      ];
+      document.getElementById("viz-stats").innerHTML = stats.map(([label, value, integer]) => (
+        `<div class="stat"><dt>${label}</dt><dd>${formatStat(value, integer)}</dd></div>`
+      )).join("");
+      renderHistogram(histogramRows, offer);
+      renderScatter(scatterRows, offer);
+      const createKey = offer.keys.createKey;
+      if (createKey) {
+        const hourlyRows = rows.filter((row) => parseTimestamp(row.createTime) != null);
+        const buckets = bucketRowsByHour(
+          hourlyRows.map((row) => ({ [createKey]: row.createTime })),
+          createKey,
+        );
+        renderHourlyBarChart(
+          mountExtraChart("case-duration-hourly-chart", `Hourly volume by ${createKey}`),
+          buckets,
+          "Case count",
+        );
+      }
+    }
+
+    function mean(values) { return values.reduce((sum, v) => sum + v, 0) / values.length; }
+    function percentile(sorted, p) {
+      if (!sorted.length) return NaN;
+      const index = (p / 100) * (sorted.length - 1);
+      const lo = Math.floor(index); const hi = Math.ceil(index);
+      if (lo === hi) return sorted[lo];
+      return sorted[lo] * (1 - (index - lo)) + sorted[hi] * (index - lo);
+    }
+    function formatStat(value, integer) {
+      if (value == null || Number.isNaN(value)) return "—";
+      return integer ? String(value) : Number(value).toFixed(3);
+    }
+
+    function withMinCreate(rows) {
+      const minCreate = Math.min(...rows.map((row) => row.createMs));
+      return rows.map((row) => ({ ...row, createTimeAfterFirstMin: (row.createMs - minCreate) / 60000 }));
+    }
+
+    function renderHistogram(rows, offer) {
+      const histogramTitle = document.querySelector("#viz-section .chart-box h3");
+      if (histogramTitle) {
+        histogramTitle.textContent = offer && offer.useStatusColor
+          ? "Duration histogram (RESOLVED only)"
+          : "Duration histogram";
+      }
+      if (!rows.length) {
+        Plotly.react("histogram", [], {
+          ...plotLayoutBase,
+          annotations: [{
+            text: offer && offer.useStatusColor ? "No RESOLVED rows to plot" : "No rows to plot",
+            xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false,
+            font: { color: "#93a4b5", size: 13 },
+          }],
+        }, { responsive: true, displaylogo: false });
+        return;
+      }
+      const binSeconds = Number(els.binSize.value);
+      const binSize = usingSeconds() ? binSeconds : binSeconds / 60;
+      const durations = durationValues(rows);
+      const minDuration = Math.min(...durations);
+      const start = Math.floor(minDuration / binSize) * binSize;
+      Plotly.react("histogram", [{
+        x: durations,
+        type: "histogram",
+        xbins: { start, size: binSize },
+        marker: { color: "#5b9fd4", line: { color: "#0f1419", width: 1 } },
+      }], {
+        ...plotLayoutBase,
+        xaxis: { ...plotLayoutBase.xaxis, title: { text: usingSeconds() ? "duration (seconds)" : "duration (minutes)" } },
+        yaxis: { ...plotLayoutBase.yaxis, title: { text: "Count" } },
+      }, { responsive: true, displaylogo: false });
+    }
+
+    function renderScatter(rows, offer) {
+      const enriched = withMinCreate(rows);
+      const field = usingSeconds() ? "duration_in_sec" : "duration_in_min";
+      const colorTitle = offer && offer.useStatusColor ? (offer.keys.statusKeyLabel || "status") : null;
+      els.scatterTitle.textContent = colorTitle
+        ? `create_time_after_first vs ${field} (colour: ${colorTitle})`
+        : `create_time_after_first vs ${field}`;
+
+      const layout = {
+        ...plotLayoutBase,
+        xaxis: { ...plotLayoutBase.xaxis, title: { text: "create_time_after_first (minutes)" } },
+        yaxis: { ...plotLayoutBase.yaxis, title: { text: field } },
+        showlegend: Boolean(offer && offer.useStatusColor),
+        legend: { orientation: "h", y: -0.2 },
+      };
+
+      if (offer && offer.useStatusColor) {
+        const statuses = enriched.map((row) => row.statusProgress || "(blank)");
+        const unique = [...new Set(statuses)].sort((left, right) => {
+          const order = ["NEW", "IN_PROGRESS", "RESOLVED"];
+          const leftIndex = order.indexOf(left);
+          const rightIndex = order.indexOf(right);
+          if (leftIndex !== -1 || rightIndex !== -1) {
+            return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+          }
+          return left.localeCompare(right);
+        });
+        const autoColorIndex = new Map();
+        const traces = unique.map((status) => {
+          const subset = enriched.filter((row) => (row.statusProgress || "(blank)") === status);
+          return {
+            name: status,
+            x: subset.map((row) => row.createTimeAfterFirstMin),
+            y: durationValues(subset),
+            text: subset.map((row) => row.id),
+            customdata: subset.map((row) => [row.createTime, row.resolutionTime, row.statusProgress]),
+            mode: "markers",
+            type: "scatter",
+            marker: {
+              size: 8,
+              color: statusProgressColor(status, autoColorIndex),
+              opacity: 0.85,
+            },
+            hovertemplate:
+              "id %{text}<br>" +
+              "status: %{customdata[2]}<br>" +
+              "create_time_after_first: %{x:.3f} min<br>" +
+              `${field}: %{y:.3f}<br>` +
+              "create_time: %{customdata[0]}<br>" +
+              "resolution_time: %{customdata[1]}<extra></extra>",
+          };
+        });
+        Plotly.react("scatter", traces, layout, { responsive: true, displaylogo: false });
+        return;
+      }
+
+      Plotly.react("scatter", [{
+        x: enriched.map((row) => row.createTimeAfterFirstMin),
+        y: durationValues(enriched),
+        text: enriched.map((row) => row.id),
+        customdata: enriched.map((row) => [row.createTime, row.resolutionTime]),
+        mode: "markers",
+        type: "scatter",
+        marker: { size: 8, color: "#7dd3a8", opacity: 0.85 },
+        hovertemplate:
+          "id %{text}<br>" +
+          "create_time_after_first: %{x:.3f} min<br>" +
+          `${field}: %{y:.3f}<br>` +
+          "create_time: %{customdata[0]}<br>" +
+          "resolution_time: %{customdata[1]}<extra></extra>",
+      }], layout, { responsive: true, displaylogo: false });
+    }
+
+    const PROXY_URL = "http://127.0.0.1:8765/xql-query-monitor.html";
+    const PROXY_CMD = "cd bay/utilities && python3 serve-xql-monitor.py";
+
+    function isFileOrigin() {
+      return location.protocol === "file:";
+    }
+
+    function fileLoadInstructions() {
+      return [
+        "This page was opened as a local file (file://).",
+        "",
+        "Browsers block live XQL API calls from file:// (CORS / origin null).",
+        "Offline Load TSV / Load JSONL still works here.",
+        "",
+        "For live queries:",
+        "1. cd bay/utilities",
+        "2. python3 serve-xql-monitor.py",
+        "3. Open " + PROXY_URL,
+      ].join("\n");
+    }
+
+    function showFileLoadAlert() {
+      const banner = document.getElementById("file-load-alert");
+      banner.innerHTML = [
+        "<strong>Opened from file://</strong> — live API calls are blocked by the browser.",
+        "Run <code>python3 serve-xql-monitor.py</code> in <code>bay/utilities</code>,",
+        "then open <code>" + PROXY_URL + "</code>.",
+        "You can still use <em>Load TSV</em> / <em>Load JSONL</em> offline.",
+      ].join(" ");
+      banner.classList.remove("hidden");
+      window.alert(fileLoadInstructions());
+    }
+
+    function liveApiBlockedReason() {
+      if (useProxy()) return "";
+      if (isFileOrigin()) {
+        return "Opened from file:// — live API calls are blocked. " + PROXY_CMD + " then open " + PROXY_URL;
+      }
+      return "Live API calls from this origin are blocked by CORS. "
+        + "Open the page via " + PROXY_CMD + " (" + PROXY_URL + "), "
+        + "or load exported TSV/JSONL offline.";
+    }
+
+    function detectLoadOrigin() {
+      if (isFileOrigin()) showFileLoadAlert();
+    }
+
+    async function runQuery() {
+      const blocked = !toolkitProfile();
+      if (blocked) {
+        setStatus("Select a profile in the Cortex PS Toolkit header.", "error");
+        return;
+      }
+      if (!els.queryText.value.trim()) {
+        setStatus("Enter an XQL query.", "error");
+        return;
+      }
+      state.abort = new AbortController();
+      els.runBtn.disabled = true;
+      els.cancelBtn.disabled = false;
+      setProgress(5);
+      const started = performance.now();
+      const query = els.queryText.value.trim();
+      try {
+        setStatus("Running XQL query via toolkit…");
+        const data = await toolkitApiRun(query, els.timeframe.value);
+        const reply = {
+          status: data.status || "SUCCESS",
+          number_of_results: data.number_of_results || data.row_count,
+          remaining_quota: data.metrics && data.metrics.remaining_quota,
+          query_cost_charged: data.metrics && data.metrics.query_cost,
+          results: { data: data.rows, stream_id: data.metrics && data.metrics.stream_id },
+        };
+        showMetrics(reply, { queryId: data.query_id, elapsedMs: data.elapsed_ms || (performance.now() - started) });
+        applyResultSet(data.rows || [], {
+          downloadTsv: els.downloadTsvOnComplete.checked,
+          downloadFilename: buildAutoDownloadFilename(data.query_id),
+        });
+        setProgress(100);
+        setStatus(`Done — ${(data.rows || []).length} rows.`, "ok");
+      } catch (error) {
+        if (error.name === "AbortError") setStatus("Cancelled.", "error");
+        else setStatus(error.message || String(error), "error");
+        setProgress(0);
+      } finally {
+        els.runBtn.disabled = false;
+        els.cancelBtn.disabled = true;
+        state.abort = null;
+      }
+    }
+
+    function parseJsonl(text) {
+      return text.split(/\r?\n/).filter((line) => line.trim()).map((line) => JSON.parse(line));
+    }
+
+    function splitTsvLine(line) {
+      return line.split("\t").map((cell) => cell.trim());
+    }
+
+    function parseTsv(text) {
+      const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 2) throw new Error("TSV must include header + rows.");
+      const headers = splitTsvLine(lines[0]);
+      return lines.slice(1).map((line) => {
+        const cells = splitTsvLine(line);
+        const row = {};
+        headers.forEach((header, index) => { row[header] = cells[index] ?? ""; });
+        return row;
+      });
+    }
+
+    function loadResultSetFromRows(rows, label) {
+      applyResultSet(rows);
+      setStatus(label, "ok");
+    }
+
+    function bindEvents() {
+      if (els.credProfileSelect) {
+        els.credProfileSelect.addEventListener("change", () => selectCredProfile(els.credProfileSelect.value));
+      }
+      if (els.saveCredProfile) {
+        els.saveCredProfile.addEventListener("click", saveCredProfile);
+      }
+      if (els.deleteCredProfile) {
+        els.deleteCredProfile.addEventListener("click", deleteCredProfile);
+      }
+      els.runBtn.addEventListener("click", runQuery);
+      els.cancelBtn.addEventListener("click", () => state.abort && state.abort.abort());
+      els.saveTsvBtn.addEventListener("click", () => {
+        if (!state.rows.length) return;
+        const filename = buildManualSaveFilename();
+        downloadResultTsv(state.rows, filename);
+        setStatus(`Saved ${state.rows.length} rows to ${filename}.`, "ok");
+      });
+      els.saveLocalPreset.addEventListener("click", () => {
+        const name = els.localPresetName.value.trim() || `Preset ${new Date().toISOString().slice(0, 16)}`;
+        const items = loadLocalPresets();
+        const loadedId = state.loadedLocalPresetId;
+        const loadedItem = loadedId ? items.find((entry) => entry.id === loadedId) : null;
+        const existingByName = findLocalPresetByName(items, name);
+        const presetPayload = buildLocalPresetPayload(name);
+
+        if (loadedItem) {
+          if (existingByName && existingByName.id !== loadedId) {
+            const overwrite = confirm(`A preset named “${existingByName.name}” already exists. Overwrite it?`);
+            if (!overwrite) {
+              setStatus("Save cancelled — preset not overwritten.");
+              return;
+            }
+            const remaining = items.filter((entry) => entry.id !== loadedId);
+            const target = remaining.find((entry) => entry.id === existingByName.id);
+            applyLocalPresetFields(target, name, presetPayload);
+            writeLocalPresets(remaining);
+            state.loadedLocalPresetId = target.id;
+            setStatus(`Updated local preset “${name}”.`);
+            return;
+          }
+          applyLocalPresetFields(loadedItem, name, presetPayload);
+          writeLocalPresets(items);
+          setStatus(`Updated local preset “${name}”.`);
+          return;
+        }
+
+        if (existingByName) {
+          const overwrite = confirm(`A preset named “${existingByName.name}” already exists. Overwrite it?`);
+          if (!overwrite) {
+            setStatus("Save cancelled — preset not overwritten.");
+            return;
+          }
+          applyLocalPresetFields(existingByName, name, presetPayload);
+          writeLocalPresets(items);
+          setStatus(`Updated local preset “${name}”.`);
+          return;
+        }
+        items.push({
+          id: crypto.randomUUID(),
+          name,
+          ...presetPayload,
+        });
+        writeLocalPresets(items);
+        state.loadedLocalPresetId = null;
+        els.localPresetName.value = "";
+        setStatus(`Saved local preset “${name}”.`);
+      });
+      els.gridPageSize.addEventListener("change", () => {
+        if (!state.table) return;
+        state.table.setPageSize(Number(els.gridPageSize.value) || 50);
+      });
+      els.durationUnit.addEventListener("change", () => {
+        if (state.generatedViz && state.vizRows.length && state.generatedViz.layout === "case_duration") {
+          state.generatedViz.render(state.vizRows, state.generatedViz);
+        }
+      });
+      els.binSize.addEventListener("change", () => {
+        if (state.generatedViz && state.vizRows.length && state.generatedViz.layout === "case_duration") {
+          renderHistogram(caseDurationHistogramRows(state.vizRows, state.generatedViz), state.generatedViz);
+        }
+      });
+      document.getElementById("load-jsonl-btn").addEventListener("click", () => document.getElementById("file-jsonl").click());
+      document.getElementById("load-tsv-btn").addEventListener("click", () => document.getElementById("file-tsv").click());
+      document.getElementById("file-jsonl").addEventListener("change", async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        try {
+          loadResultSetFromRows(parseJsonl(await file.text()), `${file.name}: loaded JSONL.`);
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+        event.target.value = "";
+      });
+      document.getElementById("file-tsv").addEventListener("change", async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        try {
+          loadResultSetFromRows(parseTsv(await file.text()), `${file.name}: loaded TSV.`);
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+        event.target.value = "";
+      });
+    }
+
+    initCredentials();
+    initSelectors();
+    migrateLocalPresetsStorage();
+    renderLocalPresets();
+    bindEvents();
+    updateProfileLine();
+  </script>
+</body>
+</html>

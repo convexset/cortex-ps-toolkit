@@ -1,0 +1,10 @@
+{
+  "id": "mfec-uat-full-workflow",
+  "label": "MFEC UAT — Clear + Splunk + SIM",
+  "profile": "mfec-uat",
+  "clear_refactor_prefix": "[REFACTOR-",
+  "steps": [
+    "mfec-uat-splunk-phishing",
+    "mfec-uat-sim-phishing"
+  ]
+}

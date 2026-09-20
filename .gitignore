@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# Local runtime data — never commit (credentials, cache, query results, logs)
+# ---------------------------------------------------------------------------
+data/*
+!data/.gitkeep
+
+# Credential and secret files (any location)
+*.credentials.json
+*-credentials.json
+.env
+.env.*
+!.env.example
+
+# On-disk tenant content cache
+**/cache/
+!presets/
+
+# Server / tool logs and debug runs
+logs/
+*.log
+.debug/
+
+# XQL result exports stored outside data/ (if configured)
+xql_results/
+*.jsonl
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# ---------------------------------------------------------------------------
+# Web (future)
+# ---------------------------------------------------------------------------
+web/node_modules/
+web/dist/
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

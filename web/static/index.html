@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cortex PS Toolkit</title>
+  <link rel="icon" href="/static/logo.png" type="image/png" />
+  <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator_midnight.min.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260921p" />
+</head>
+<body>
+  <div class="app">
+    <nav class="rail" aria-label="Main navigation">
+      <a class="rail-logo" href="#/" title="Cortex PS Toolkit home" aria-label="Home">
+        <img src="/static/logo.png" alt="" width="32" height="32" />
+      </a>
+      <div class="rail-primary">
+        <button class="rail-btn" data-route="lists" title="List Tools">📝</button>
+        <button class="rail-btn" data-route="scripts" title="Script Tools">⚙</button>
+        <button class="rail-btn" data-route="playbooks" title="Playbook Tools">📋</button>
+        <button class="rail-btn" data-route="integrations" title="Integrations">🔌</button>
+        <button class="rail-btn" data-route="object-setup" title="Object Setup">📋</button>
+        <button class="rail-btn" data-route="xql" title="XQL Query Tool">📊</button>
+        <button class="rail-btn" data-route="indicators" title="Indicators (IOCs/BIOCs)">🎯</button>
+        <button class="rail-btn" data-route="system-admin" title="User Administration">👥</button>
+      </div>
+      <div class="rail-footer">
+        <button class="rail-btn" data-route="credentials" title="API Profiles">🔑</button>
+        <button class="rail-btn" data-route="settings" title="Settings">⚙</button>
+      </div>
+    </nav>
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-row">
+          <h1 id="section-title">Overview</h1>
+          <label class="profile-picker" id="global-profile-picker">
+            Profile
+            <select id="active-profile"></select>
+          </label>
+        </div>
+      </header>
+      <div id="active-profile-context" class="profile-context hidden" aria-live="polite"></div>
+      <div id="panel-home" class="panel">
+        <section class="landing-hero">
+          <img src="/static/logo.png" alt="" class="landing-logo" width="72" height="72" />
+          <h2 class="landing-title">Cortex PS Toolkit</h2>
+          <p class="landing-lead">
+            Professional-services tooling for <strong>Cortex XSOAR</strong> and <strong>Cortex XSIAM</strong> tenants —
+            credentials, content cache, cross-tenant copy, playbook analysis, and platform administration.
+          </p>
+        </section>
+        <section class="landing-grid" aria-label="Toolkit sections">
+          <article class="landing-card">
+            <h3>API Profiles</h3>
+            <p>Register tenant URLs and API keys, validate connectivity, and select the active profile for all tools.</p>
+            <button type="button" class="secondary landing-card-link" data-route="credentials">Open API Profiles</button>
+          </article>
+          <article class="landing-card">
+            <h3>XQL Query Tool</h3>
+            <p>Run live XQL against XSIAM/XDR/AgentiX tenants with presets, visualisations, and query history.</p>
+            <button type="button" class="secondary landing-card-link" data-route="xql">Open XQL</button>
+          </article>
+          <article class="landing-card">
+            <h3>List Tools</h3>
+            <p>Refresh, browse, copy, and delete Cortex lists between tenants with conflict preview.</p>
+            <button type="button" class="secondary landing-card-link" data-route="lists">Open Lists</button>
+          </article>
+          <article class="landing-card">
+            <h3>Script Tools</h3>
+            <p>Cache automation scripts, copy custom scripts across tenants, and bulk delete with safeguards.</p>
+            <button type="button" class="secondary landing-card-link" data-route="scripts">Open Scripts</button>
+          </article>
+          <article class="landing-card">
+            <h3>Playbook Tools</h3>
+            <p>Refresh playbooks and scripts together, analyse structure, refactor with extract-multi, and copy playbooks or component trees.</p>
+            <button type="button" class="secondary landing-card-link" data-route="playbooks">Open Playbooks</button>
+          </article>
+          <article class="landing-card">
+            <h3>Integrations</h3>
+            <p>Browse definitions, instances, and commands; copy or delete custom integration definitions; manage the credential vault.</p>
+            <button type="button" class="secondary landing-card-link" data-route="integrations">Open Integrations</button>
+          </article>
+          <article class="landing-card">
+            <h3>Object Setup</h3>
+            <p>Incident fields, types, layouts, classifiers, and pre-process rules — refresh, copy, delete, and cross-tenant Object Bundle workflows.</p>
+            <button type="button" class="secondary landing-card-link" data-route="object-setup">Open Object Setup</button>
+          </article>
+          <article class="landing-card">
+            <h3>Indicators</h3>
+            <p>IOCs, BIOCs, and correlation rules — list, copy, and delete with platform-aware API routing.</p>
+            <button type="button" class="secondary landing-card-link" data-route="indicators">Open Indicators</button>
+          </article>
+          <article class="landing-card">
+            <h3>User Administration</h3>
+            <p>RBAC users, roles, groups, and API keys where supported on the active tenant.</p>
+            <button type="button" class="secondary landing-card-link" data-route="system-admin">Open User Admin</button>
+          </article>
+          <article class="landing-card">
+            <h3>Settings</h3>
+            <p>Toolkit preferences such as cache TTL and concurrency limits.</p>
+            <button type="button" class="secondary landing-card-link" data-route="settings">Open Settings</button>
+          </article>
+        </section>
+      </div>
+      <div id="panel-credentials" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="cred-add" class="primary">Add profile</button>
+          <button type="button" id="cred-import-lab">Import lab</button>
+          <button type="button" id="cred-purge-expired">Purge expired</button>
+          <span id="cred-meta" class="meta"></span>
+        </div>
+        <label class="grid-search">
+          Search
+          <input type="search" id="credentials-search" placeholder="Slug or label" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="credentials-grid"></div>
+        <dialog id="cred-dialog">
+          <form id="cred-form" method="dialog">
+            <h2 id="cred-dialog-title">Add profile</h2>
+            <div class="form-grid">
+              <label>Label <input name="label" required /></label>
+              <label>Slug <input name="slug" placeholder="auto from label" /></label>
+              <label>URL <input name="url" type="url" required placeholder="https://..." /></label>
+              <label>API key ID <input name="api_id" /></label>
+              <label>API key <input name="key" type="password" autocomplete="off" /></label>
+              <label>Platform
+                <select name="tenant_type">
+                  <option value="">Auto-detect</option>
+                  <option value="xsoar6">xsoar6</option>
+                  <option value="xsoar8">xsoar8</option>
+                  <option value="xsiam">xsiam</option>
+                  <option value="xdr3">xdr3</option>
+                  <option value="xdr5">xdr5</option>
+                  <option value="agentix">agentix</option>
+                </select>
+              </label>
+              <p class="field-hint full">
+                Auto-detect infers platform from the tenant URL hostname (for example <code>agentix</code>, <code>xsiam</code>,
+                <code>crtx.</code> → xsoar8, <code>.xdr.</code> → xsiam). It does not call the tenant API.
+                Use <strong>Validate</strong> after save to test the key against live health endpoints.
+              </p>
+              <label>Expires <input name="expires_at" placeholder="end Nov 2026 or 2026-11-30" /></label>
+              <label class="checkbox"><input name="verify_ssl" type="checkbox" checked /> Verify TLS</label>
+              <label class="full">Notes <textarea name="notes" rows="2"></textarea></label>
+            </div>
+            <div class="dialog-actions">
+              <button type="button" id="cred-cancel" class="secondary">Cancel</button>
+              <button type="submit" class="primary">Save</button>
+            </div>
+          </form>
+        </dialog>
+        <pre id="cred-action-result" class="result hidden"></pre>
+      </div>
+      <div id="panel-xql" class="panel hidden">
+        <p id="xql-profile-hint" class="meta panel-hint warn"></p>
+        <iframe id="xql-frame" class="xql-frame" title="XQL Query Tool"></iframe>
+      </div>
+      <div id="panel-settings" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="settings-save" class="primary">Save settings</button>
+          <span id="settings-meta" class="meta"></span>
+        </div>
+        <label class="inline-field">
+          Cache TTL (minutes)
+          <input type="number" id="settings-cache-ttl-minutes" min="1" max="1440" value="5" />
+        </label>
+        <p class="meta panel-hint">
+          Playbook, script, and list indexes refresh from the tenant only when older than this TTL.
+          Analysis and copy planning use cached indexes and locally stored playbook bodies when available.
+        </p>
+      </div>
+      <div id="panel-playbooks" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="playbooks-refresh" class="primary">Refresh cache</button>
+          <button type="button" id="playbooks-analyze" class="action">Analyze selected</button>
+          <span id="playbooks-meta" class="meta"></span>
+        </div>
+        <label class="grid-search">
+          Search
+          <input type="search" id="playbooks-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="playbooks-grid"></div>
+        <section id="playbooks-analysis-accordion" class="analysis-accordion hidden" aria-label="Playbook analyses"></section>
+        <section class="copy-panel">
+          <h2>Copy playbooks to other tenant</h2>
+          <div class="selection-toolbar">
+            <button type="button" id="playbooks-select-all-visible">Select all visible</button>
+            <button type="button" id="playbooks-select-all">Select all</button>
+            <button type="button" id="playbooks-select-none">Select none</button>
+            <button type="button" id="playbooks-delete" class="danger">Delete selected</button>
+            <span id="playbooks-selection-count" class="meta">0 selected</span>
+          </div>
+          <div class="copy-row">
+            <label>
+              Target profile
+              <select id="playbooks-copy-target"></select>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="playbooks-copy-overwrite" />
+              Overwrite if name exists
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="playbooks-copy-stop-on-conflict" />
+              Stop if name exists on target
+            </label>
+            <button type="button" id="playbooks-copy" class="primary">Copy selected</button>
+          </div>
+          <div id="playbooks-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
+          <pre id="playbooks-copy-result" class="result hidden"></pre>
+          <pre id="playbooks-delete-result" class="result hidden"></pre>
+        </section>
+        <dialog id="playbooks-delete-dialog">
+          <form id="playbooks-delete-form" method="dialog">
+            <h2>Confirm deletion</h2>
+            <p id="playbooks-delete-dialog-text" class="dialog-lead"></p>
+            <label class="delete-confirm-label">
+              Type DELETE to proceed
+              <input type="text" id="playbooks-delete-confirm-input" autocomplete="off" spellcheck="false" />
+            </label>
+            <div class="dialog-actions">
+              <button type="button" id="playbooks-delete-cancel" class="secondary">Cancel</button>
+              <button type="submit" id="playbooks-delete-submit" class="danger" disabled>Delete permanently</button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+      <div id="panel-scripts" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="scripts-refresh" class="primary">Refresh cache</button>
+          <span id="scripts-meta" class="meta"></span>
+        </div>
+        <label class="grid-search">
+          Search
+          <input type="search" id="scripts-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="scripts-grid"></div>
+        <section class="copy-panel">
+          <h2>Copy scripts to other tenant</h2>
+          <div class="selection-toolbar">
+            <button type="button" id="scripts-select-all-visible">Select all visible</button>
+            <button type="button" id="scripts-select-all">Select all</button>
+            <button type="button" id="scripts-select-none">Select none</button>
+            <button type="button" id="scripts-view">View selected</button>
+            <button type="button" id="scripts-delete" class="danger">Delete selected</button>
+            <span id="scripts-selection-count" class="meta">0 selected</span>
+          </div>
+          <div class="copy-row">
+            <label>
+              Target profile
+              <select id="scripts-copy-target"></select>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="scripts-copy-overwrite" />
+              Overwrite if name exists
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="scripts-copy-stop-on-conflict" />
+              Stop if name exists on target
+            </label>
+            <button type="button" id="scripts-copy" class="primary">Copy selected</button>
+          </div>
+          <div id="scripts-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
+          <pre id="scripts-copy-result" class="result hidden"></pre>
+          <pre id="scripts-delete-result" class="result hidden"></pre>
+        </section>
+        <dialog id="scripts-delete-dialog">
+          <form id="scripts-delete-form" method="dialog">
+            <h2>Confirm deletion</h2>
+            <p id="scripts-delete-dialog-text" class="dialog-lead"></p>
+            <label class="delete-confirm-label">
+              Type DELETE to proceed
+              <input type="text" id="scripts-delete-confirm-input" autocomplete="off" spellcheck="false" />
+            </label>
+            <div class="dialog-actions">
+              <button type="button" id="scripts-delete-cancel" class="secondary">Cancel</button>
+              <button type="submit" id="scripts-delete-submit" class="danger" disabled>Delete permanently</button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+      <div id="panel-integrations" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="integrations-refresh" class="primary">Refresh cache</button>
+          <span id="integrations-meta" class="meta"></span>
+        </div>
+        <div class="integrations-tabs">
+          <button type="button" class="integrations-tab active" data-tab="definitions">Definitions</button>
+          <button type="button" class="integrations-tab" data-tab="instances">Instances</button>
+          <button type="button" class="integrations-tab" data-tab="commands">Commands</button>
+          <button type="button" class="integrations-tab" data-tab="tenant-credentials">Tenant credentials</button>
+          <button type="button" class="integrations-tab" data-tab="packs">Installed packs</button>
+          <button type="button" class="integrations-tab" data-tab="vault">Local vault</button>
+        </div>
+        <div class="integrations-tab-panel" data-tab="definitions">
+          <p class="meta panel-hint">Double-click a definition row, or select one and click View selected.</p>
+          <label class="grid-search">
+            Search
+            <input type="search" id="integrations-definitions-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
+          </label>
+          <div id="integrations-definitions-grid"></div>
+          <section class="copy-panel">
+            <h2>Actions</h2>
+            <div class="selection-toolbar">
+              <button type="button" id="integrations-select-none">Select none</button>
+              <button type="button" id="integrations-view">View selected</button>
+              <button type="button" id="integrations-delete" class="danger">Delete selected</button>
+              <span id="integrations-selection-count" class="meta">0 selected</span>
+            </div>
+            <div class="copy-row">
+              <label>Target profile <select id="integrations-copy-target"></select></label>
+              <label class="checkbox"><input type="checkbox" id="integrations-copy-overwrite" checked /> Overwrite</label>
+              <label class="checkbox"><input type="checkbox" id="integrations-copy-stop" /> Stop on conflict</label>
+              <button type="button" id="integrations-copy" class="primary">Copy selected</button>
+            </div>
+            <pre id="integrations-action-result" class="result hidden"></pre>
+          </section>
+          <dialog id="integrations-delete-dialog">
+            <form id="integrations-delete-form" method="dialog">
+              <h2>Confirm deletion</h2>
+              <p id="integrations-delete-dialog-text" class="dialog-lead"></p>
+              <label class="delete-confirm-label">
+                Type DELETE to proceed
+                <input type="text" id="integrations-delete-confirm-input" autocomplete="off" spellcheck="false" />
+              </label>
+              <div class="dialog-actions">
+                <button type="button" id="integrations-delete-cancel" class="secondary">Cancel</button>
+                <button type="submit" id="integrations-delete-submit" class="danger" disabled>Delete permanently</button>
+              </div>
+            </form>
+          </dialog>
+        </div>
+        <div class="integrations-tab-panel hidden" data-tab="instances">
+          <p class="meta panel-hint">Double-click an instance row, or select one and click View selected.</p>
+          <div id="integrations-instances-grid"></div>
+          <div class="selection-toolbar">
+            <button type="button" id="integrations-instances-select-none">Select none</button>
+            <button type="button" id="integrations-instances-view">View selected</button>
+            <span id="integrations-instances-selection-count" class="meta">0 selected</span>
+          </div>
+        </div>
+        <div class="integrations-tab-panel hidden" data-tab="commands">
+          <p class="meta panel-hint">Double-click an integration row, or select one and click View selected.</p>
+          <label class="grid-search">
+            Search
+            <input type="search" id="integrations-commands-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
+          </label>
+          <div id="integrations-commands-grid"></div>
+          <div class="selection-toolbar">
+            <button type="button" id="integrations-commands-select-none">Select none</button>
+            <button type="button" id="integrations-commands-view">View selected</button>
+            <span id="integrations-commands-selection-count" class="meta">0 selected</span>
+          </div>
+        </div>
+        <div class="integrations-tab-panel hidden" data-tab="tenant-credentials">
+          <p class="meta panel-hint">Read-only metadata from tenant API. Secrets are not returned.</p>
+          <div id="integrations-tenant-creds-grid"></div>
+        </div>
+        <div class="integrations-tab-panel hidden" data-tab="packs">
+          <div id="integrations-packs-grid"></div>
+        </div>
+        <div class="integrations-tab-panel hidden" data-tab="vault">
+          <div class="vault-panel">
+            <header class="vault-header">
+              <div class="vault-header-row">
+                <span id="vault-status-badge" class="vault-badge vault-badge--loading">Loading</span>
+                <p id="vault-status" class="vault-status">Checking vault status…</p>
+              </div>
+              <p id="vault-wraps-row" class="vault-meta hidden">
+                Passphrase slots: <span id="vault-wraps-meta">—</span>
+              </p>
+            </header>
+
+            <section id="vault-init-section" class="vault-section hidden">
+              <h3 class="vault-section-title">Create vault</h3>
+              <p class="vault-section-desc">Set an initial passphrase to encrypt local integration credentials on this machine.</p>
+              <div class="vault-form-grid">
+                <label class="full">
+                  Initial passphrase
+                  <input type="password" id="vault-init-passphrase" autocomplete="new-password" placeholder="Choose a strong passphrase" />
+                </label>
+                <label>
+                  Passphrase slot alias
+                  <input type="text" id="vault-init-alias" placeholder="primary" />
+                </label>
+              </div>
+              <div class="vault-actions">
+                <button type="button" id="vault-init-btn" class="primary">Initialize vault</button>
+              </div>
+            </section>
+
+            <section id="vault-session-section" class="vault-section hidden">
+              <h3 class="vault-section-title">Session</h3>
+              <div id="vault-unlock-block" class="vault-form-grid">
+                <label class="full">
+                  Passphrase
+                  <input type="password" id="vault-passphrase" autocomplete="current-password" placeholder="Enter passphrase to unlock" />
+                </label>
+              </div>
+              <div class="vault-actions">
+                <button type="button" id="vault-unlock-btn" class="primary">Unlock</button>
+                <button type="button" id="vault-lock-btn">Lock</button>
+              </div>
+            </section>
+
+            <section id="vault-manage-section" class="vault-section hidden">
+              <h3 class="vault-section-title">Passphrase slots</h3>
+              <p class="vault-section-desc">Add alternate passphrases or revoke unused slots while the vault is unlocked.</p>
+              <div class="vault-form-grid">
+                <label>
+                  Wrap alias
+                  <input type="text" id="vault-wrap-alias" placeholder="personal" />
+                </label>
+                <label>
+                  Current passphrase
+                  <input type="password" id="vault-current-passphrase" autocomplete="current-password" />
+                </label>
+                <label>
+                  New passphrase
+                  <input type="password" id="vault-new-passphrase" autocomplete="new-password" />
+                </label>
+              </div>
+              <div class="vault-actions">
+                <button type="button" id="vault-add-wrap-btn">Add passphrase slot</button>
+              </div>
+              <div class="vault-form-grid vault-form-grid--compact">
+                <label class="full">
+                  Revoke alias
+                  <input type="text" id="vault-revoke-alias" placeholder="alias to revoke" />
+                </label>
+              </div>
+              <div class="vault-actions">
+                <button type="button" id="vault-revoke-wrap-btn" class="danger">Revoke passphrase slot</button>
+              </div>
+            </section>
+
+            <section id="vault-entries-section" class="vault-section hidden">
+              <h3 class="vault-section-title">Credential entries</h3>
+              <div class="vault-form-grid">
+                <label>
+                  Entry name
+                  <input type="text" id="vault-entry-name" placeholder="e.g. prod-snow" />
+                </label>
+                <label>
+                  User
+                  <input type="text" id="vault-entry-user" />
+                </label>
+                <label>
+                  Password
+                  <input type="password" id="vault-entry-password" autocomplete="off" />
+                </label>
+                <label>
+                  Workgroup
+                  <input type="text" id="vault-entry-workgroup" />
+                </label>
+                <label class="full">
+                  Notes
+                  <input type="text" id="vault-entry-notes" />
+                </label>
+              </div>
+              <div class="vault-actions">
+                <button type="button" id="vault-add-entry-btn" class="primary">Add vault entry</button>
+              </div>
+              <div id="vault-entries-grid" class="vault-entries-grid"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+      <div id="panel-object-setup" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="object-setup-refresh" class="primary">Refresh cache</button>
+          <span id="object-setup-meta" class="meta"></span>
+        </div>
+        <div class="integrations-tabs">
+          <button type="button" class="object-setup-tab integrations-tab" data-asset="incident-types">Incident types</button>
+          <button type="button" class="object-setup-tab integrations-tab" data-asset="incident-fields">Custom fields</button>
+          <button type="button" class="object-setup-tab integrations-tab" data-asset="layouts">Layouts</button>
+          <button type="button" class="object-setup-tab integrations-tab" data-asset="classifiers">Classifiers &amp; mappers</button>
+          <button type="button" class="object-setup-tab integrations-tab" data-asset="preprocess">Pre-process rules</button>
+          <button type="button" class="object-setup-tab integrations-tab" data-asset="correlation-rules">Correlation rules</button>
+        </div>
+        <label class="grid-search">
+          Search
+          <input type="search" id="object-setup-search" placeholder="ID or name" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="object-setup-grid"></div>
+        <section class="copy-panel">
+          <h2>Actions</h2>
+          <div class="selection-toolbar">
+            <button type="button" id="object-setup-select-none">Select none</button>
+            <button type="button" id="object-setup-delete" class="danger">Delete selected</button>
+            <span id="object-setup-selection-count" class="meta">0 selected</span>
+          </div>
+          <div id="object-setup-copy-row" class="copy-row">
+            <label>Target profile <select id="object-setup-copy-target"></select></label>
+            <label class="checkbox"><input type="checkbox" id="object-setup-copy-overwrite" checked /> Overwrite</label>
+            <label class="checkbox"><input type="checkbox" id="object-setup-copy-stop" /> Stop on conflict</label>
+            <button type="button" id="object-setup-copy" class="primary">Copy selected</button>
+          </div>
+          <div class="workflow-section">
+            <h3 class="workflow-heading">Object Bundle</h3>
+            <p class="meta panel-hint admin-panel-note">Collect assets from any tab, then copy them together in dependency order. Only bundle items are copied — not the whole tenant.</p>
+            <div id="object-setup-workflow-row" class="copy-row workflow-toolbar">
+              <button type="button" id="object-setup-add-workflow">Add selection to bundle</button>
+              <button type="button" id="object-setup-clear-workflow">Clear bundle</button>
+              <span id="object-setup-workflow-summary" class="meta">Bundle empty</span>
+            </div>
+            <ul id="object-setup-workflow-list" class="workflow-list hidden"></ul>
+          </div>
+          <div id="object-setup-orchestrate-row" class="copy-row">
+            <label>Object Bundle Destination <select id="object-setup-orchestrate-target"></select></label>
+            <button type="button" id="object-setup-orchestrate">Copy Object Bundle</button>
+          </div>
+          <pre id="object-setup-action-result" class="result hidden"></pre>
+        </section>
+      </div>
+      <div id="panel-indicators" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="indicators-refresh" class="primary">Refresh section</button>
+          <button type="button" id="indicators-refresh-all">Refresh IOCs + BIOCs</button>
+          <span id="indicators-meta" class="meta"></span>
+        </div>
+        <div class="integrations-tabs">
+          <button type="button" class="indicators-tab integrations-tab" data-section="indicators">IOCs</button>
+          <button type="button" class="indicators-tab integrations-tab" data-section="biocs">BIOCs</button>
+        </div>
+        <label class="grid-search">
+          Search
+          <input type="search" id="indicators-search" placeholder="ID or name" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="indicators-grid"></div>
+        <section class="copy-panel">
+          <h2>Actions</h2>
+          <div class="selection-toolbar">
+            <button type="button" id="indicators-select-none">Select none</button>
+            <button type="button" id="indicators-delete" class="danger">Delete selected</button>
+            <span id="indicators-selection-count" class="meta">0 selected</span>
+          </div>
+          <div id="indicators-copy-row" class="copy-row">
+            <label>Target profile <select id="indicators-copy-target"></select></label>
+            <label class="checkbox"><input type="checkbox" id="indicators-copy-overwrite" /> Overwrite</label>
+            <label class="checkbox"><input type="checkbox" id="indicators-copy-stop" /> Stop on conflict</label>
+            <button type="button" id="indicators-copy" class="primary">Copy selected (BIOCs)</button>
+          </div>
+          <pre id="indicators-action-result" class="result hidden"></pre>
+        </section>
+      </div>
+      <div id="panel-system-admin" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="system-admin-refresh" class="primary">Refresh section</button>
+          <button type="button" id="system-admin-refresh-all">Refresh all sections</button>
+          <span id="system-admin-meta" class="meta"></span>
+        </div>
+        <div class="integrations-tabs">
+          <button type="button" class="system-admin-tab integrations-tab" data-section="rbac-users">Users</button>
+          <button type="button" class="system-admin-tab integrations-tab" data-section="rbac-roles">Roles</button>
+          <button type="button" class="system-admin-tab integrations-tab" data-section="rbac-groups">Groups</button>
+          <button type="button" class="system-admin-tab integrations-tab" data-section="api-keys">API keys</button>
+        </div>
+        <label class="grid-search">
+          Search
+          <input type="search" id="system-admin-search" placeholder="ID or name" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="system-admin-grid"></div>
+        <section id="system-admin-list-actions" class="copy-panel hidden">
+          <h2>Manage selected keys</h2>
+          <div class="selection-toolbar">
+            <button type="button" id="system-admin-select-none">Select none</button>
+            <button type="button" id="system-admin-delete" class="danger">Delete selected</button>
+            <span id="system-admin-selection-count" class="meta">0 selected</span>
+          </div>
+        </section>
+        <section id="system-admin-generate-panel" class="copy-panel hidden">
+          <h2>Generate API key</h2>
+          <p class="meta panel-hint admin-panel-note">Assign at least one tenant role. The secret key is returned once in the result panel below. Refresh the <strong>Roles</strong> tab first if the list is empty.</p>
+          <div class="form-grid admin-form-grid">
+            <label class="full">Roles <span class="meta">(hold ⌘/Ctrl to select multiple)</span>
+              <select id="system-admin-api-key-roles" multiple size="5"></select>
+            </label>
+            <label>Security level
+              <select id="system-admin-api-key-security">
+                <option value="standard" selected>standard</option>
+                <option value="advanced">advanced</option>
+              </select>
+            </label>
+            <label>Comment
+              <input type="text" id="system-admin-api-key-comment" value="cortex-ps-toolkit" autocomplete="off" />
+            </label>
+            <label>Expiration <span class="meta">(optional, local time)</span>
+              <input type="datetime-local" id="system-admin-api-key-expiration" />
+            </label>
+          </div>
+          <div class="copy-row">
+            <button type="button" id="system-admin-generate-key" class="primary">Generate API key</button>
+          </div>
+        </section>
+        <section class="copy-panel">
+          <h2>Result</h2>
+          <pre id="system-admin-action-result" class="result hidden"></pre>
+        </section>
+      </div>
+      <div id="panel-lists" class="panel hidden">
+        <div class="toolbar">
+          <button type="button" id="lists-refresh" class="primary">Refresh cache</button>
+          <span id="lists-meta" class="meta"></span>
+        </div>
+        <p class="meta panel-hint">Double-click a list row, or select one and click View selected.</p>
+        <label class="grid-search">
+          Search
+          <input type="search" id="lists-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
+        </label>
+        <div id="lists-grid"></div>
+        <section class="copy-panel">
+          <h2>Copy lists to other tenant</h2>
+          <div class="selection-toolbar">
+            <button type="button" id="lists-select-all-visible">Select all visible</button>
+            <button type="button" id="lists-select-all">Select all</button>
+            <button type="button" id="lists-select-none">Select none</button>
+            <button type="button" id="lists-view">View selected</button>
+            <button type="button" id="lists-delete" class="danger">Delete selected</button>
+            <span id="lists-selection-count" class="meta">0 selected</span>
+          </div>
+          <div class="copy-row">
+            <label>
+              Target profile
+              <select id="copy-target"></select>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="copy-overwrite" />
+              Overwrite if name exists
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="copy-stop-on-conflict" />
+              Stop if name exists on target
+            </label>
+            <button type="button" id="lists-copy" class="primary">Copy selected</button>
+          </div>
+          <div id="lists-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
+          <pre id="copy-result" class="result hidden"></pre>
+          <pre id="delete-result" class="result hidden"></pre>
+        </section>
+        <dialog id="lists-delete-dialog">
+          <form id="lists-delete-form" method="dialog">
+            <h2>Confirm deletion</h2>
+            <p id="lists-delete-dialog-text" class="dialog-lead"></p>
+            <label class="delete-confirm-label">
+              Type DELETE to proceed
+              <input type="text" id="lists-delete-confirm-input" autocomplete="off" spellcheck="false" />
+            </label>
+            <div class="dialog-actions">
+              <button type="button" id="lists-delete-cancel" class="secondary">Cancel</button>
+              <button type="submit" id="lists-delete-submit" class="danger" disabled>Delete permanently</button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+    </main>
+  </div>
+  <dialog id="content-viewer-dialog" class="content-viewer-dialog app-dialog">
+    <form method="dialog" class="content-viewer-form">
+      <header class="content-viewer-header">
+        <h2 id="content-viewer-title">Viewer</h2>
+        <p id="content-viewer-subtitle" class="dialog-lead"></p>
+      </header>
+      <nav id="content-viewer-tabs" class="content-viewer-tabs" role="tablist" aria-label="Viewer tabs"></nav>
+      <pre id="content-viewer-panel" class="content-viewer-panel" tabindex="0"></pre>
+      <div class="dialog-actions">
+        <button type="button" id="content-viewer-copy" class="secondary">Copy</button>
+        <button type="submit" class="primary">Close</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="confirm-dialog" class="app-dialog">
+    <form id="confirm-dialog-form" method="dialog">
+      <h2 id="confirm-dialog-title">Confirm</h2>
+      <pre id="confirm-dialog-message" class="dialog-body"></pre>
+      <div class="dialog-actions">
+        <button type="button" id="confirm-dialog-cancel" class="secondary">Cancel</button>
+        <button type="submit" class="primary" id="confirm-dialog-proceed">Proceed</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="outcome-dialog" class="app-dialog">
+    <form method="dialog">
+      <h2 id="outcome-dialog-title">Operation complete</h2>
+      <p id="outcome-dialog-message" class="dialog-lead"></p>
+      <div class="dialog-actions">
+        <button type="submit" class="primary" id="outcome-dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="app-loader" class="app-loader hidden" aria-live="polite" aria-hidden="true">
+    <div class="app-loader-panel">
+      <div class="app-loader-spinner" role="status" aria-label="Loading"></div>
+      <p id="app-loader-text" class="app-loader-text"></p>
+    </div>
+  </div>
+  <script src="https://unpkg.com/tabulator-tables@6.2.5/dist/js/tabulator.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+  <script src="/static/ws-client.js"></script>
+  <script src="/static/cache-meta.js?v=20260921e"></script>
+  <script src="/static/profile-context.js"></script>
+  <script src="/static/grid-search.js"></script>
+  <script src="/static/operation-progress-ui.js?v=20260921j"></script>
+  <script src="/static/content-viewer-ui.js?v=20260921a"></script>
+  <script src="/static/content-tools-ui.js?v=20260921o"></script>
+  <script src="/static/refactor-graph-validation.js"></script>
+  <script src="/static/playbooks-analysis-ui.js"></script>
+  <script src="/static/settings-ui.js"></script>
+  <script src="/static/xql-ui.js"></script>
+  <script src="/static/credentials-ui.js"></script>
+  <script src="/static/capabilities-ui.js?v=20260921c"></script>
+  <script src="/static/integrations-ui.js?v=20260921o"></script>
+  <script src="/static/object-setup-ui.js?v=20260921i"></script>
+  <script src="/static/indicators-ui.js?v=20260921i"></script>
+  <script src="/static/system-admin-ui.js?v=20260921e"></script>
+  <script src="/static/app.js?v=20260921h"></script>
+</body>
+</html>

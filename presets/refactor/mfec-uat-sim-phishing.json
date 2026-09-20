@@ -1,0 +1,9 @@
+{
+  "id": "mfec-uat-sim-phishing",
+  "label": "MFEC UAT — SIM Phishing",
+  "profile": "mfec-uat",
+  "playbook_name": "[SIM] Phishing Email Reported by User",
+  "leaf_tasks": ["560", "583", "368", "370", "372", "373"],
+  "clusters": ["21:52"],
+  "post_task_updates": ["contains:HttpV2:i|retry=30x30,stop-on-error"]
+}

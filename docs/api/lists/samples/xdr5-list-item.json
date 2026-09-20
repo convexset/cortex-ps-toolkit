@@ -1,0 +1,40 @@
+{
+  "platform": "xdr5",
+  "host_example": "https://api-cortex-cs.xdr.us.paloaltonetworks.com",
+  "path": "/xsoar/public/v1/lists",
+  "sample_list_item": {
+    "id": "excluded-users-from-soft-remediation",
+    "version": 1,
+    "cacheVersn": 0,
+    "sequenceNumber": 9812,
+    "primaryTerm": 1,
+    "modified": "2026-01-11T16:55:14.400998671Z",
+    "sizeInBytes": 1124,
+    "packID": "",
+    "packName": "",
+    "itemVersion": "",
+    "fromServerVersion": "",
+    "toServerVersion": "",
+    "propagationLabels": [
+      "all"
+    ],
+    "definitionId": "",
+    "isOverridable": false,
+    "vcShouldIgnore": false,
+    "vcShouldKeepItemLegacyProdMachine": false,
+    "commitMessage": "",
+    "shouldCommit": false,
+    "OWNER": {},
+    "name": "excluded-users-from-soft-remediation",
+    "prevName": "excluded-users-from-soft-remediation",
+    "data": "",
+    "locked": false,
+    "nameLocked": false,
+    "system": false,
+    "truncated": false,
+    "type": "plaintext",
+    "tags": null,
+    "description": "This list allows you to exclude trusted and critical users from **User Soft Remediation** commands such as expiring passwords or other commands that address security issues without completely locking or disabling a user's account. After these commands are run, a user can regain access through steps such as two-factor authentication.\nFields supported: id, username, email.\nInclude all relevant identifiers used across systems.\nExample: \"username1, user@compamy.com, userID112, username2\"",
+    "detached": false
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "platform": "xsoar6",
+  "host_example": "https://xsoar6.example.test",
+  "path": "/lists",
+  "sample_list_item": {
+    "id": "InternalDomains",
+    "version": 3,
+    "cacheVersn": 0,
+    "modified": "2026-06-19T03:18:31.948947804Z",
+    "created": "2026-06-19T03:17:31.456970776Z",
+    "sizeInBytes": 0,
+    "packID": "CommonScripts",
+    "packName": "Common Scripts",
+    "itemVersion": "1.22.26",
+    "fromServerVersion": "6.5.0",
+    "toServerVersion": "",
+    "propagationLabels": [],
+    "packPropagationLabels": [
+      "all"
+    ],
+    "definitionId": "",
+    "vcShouldIgnore": false,
+    "vcShouldKeepItemLegacyProdMachine": false,
+    "commitMessage": "",
+    "shouldCommit": false,
+    "allRead": true,
+    "allReadWrite": true,
+    "previousAllRead": true,
+    "previousAllReadWrite": true,
+    "name": "InternalDomains",
+    "prevName": "InternalDomains",
+    "data": "",
+    "locked": false,
+    "nameLocked": false,
+    "system": true,
+    "truncated": false,
+    "type": "plain_text",
+    "tags": null,
+    "description": "",
+    "detached": false
+  }
+}

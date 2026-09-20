@@ -1,0 +1,27 @@
+{
+  "xsoar6": {
+    "host_example": "https://xsoar6.example.test",
+    "lists_path": "/lists",
+    "verified": "2026-09-17"
+  },
+  "xsoar8": {
+    "host_example": "https://api-xsoar-japac-test.crtx.au.paloaltonetworks.com",
+    "lists_path": "/xsoar/public/v1/lists",
+    "verified": "2026-09-17"
+  },
+  "xsiam": {
+    "host_example": "https://api-psojapac-xsiam.xdr.au.paloaltonetworks.com",
+    "lists_path": "/xsoar/public/v1/lists",
+    "verified": "2026-09-17"
+  },
+  "xdr5": {
+    "host_example": "https://api-cortex-cs.xdr.us.paloaltonetworks.com",
+    "lists_path": "/xsoar/public/v1/lists",
+    "verified": "2026-09-17"
+  },
+  "agentix": {
+    "host_example": "https://api-csagentix.xdr.us.paloaltonetworks.com",
+    "lists_path": "/xsoar/public/v1/lists",
+    "verified": "2026-09-17"
+  }
+}
