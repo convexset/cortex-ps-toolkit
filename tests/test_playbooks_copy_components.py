@@ -5,9 +5,7 @@ from unittest.mock import patch
 from cortex_ps_toolkit.playbooks.copy_components import plan_playbook_components_copy
 
 
-@patch("cortex_ps_toolkit.playbooks.copy_components.ensure_scripts_cache")
-@patch("cortex_ps_toolkit.playbooks.copy_components.ensure_playbooks_cache")
-@patch("cortex_ps_toolkit.playbooks.copy_components.ensure_analysis_caches")
+@patch("cortex_ps_toolkit.playbooks.copy_components.check_analysis_caches")
 @patch("cortex_ps_toolkit.playbooks.copy_components.plan_scripts_copy")
 @patch("cortex_ps_toolkit.playbooks.copy_components.analyze_playbook")
 @patch("cortex_ps_toolkit.playbooks.copy_components.get_profile")
@@ -15,9 +13,7 @@ def test_plan_playbook_components_copy(
     mock_get_profile,
     mock_analyze,
     mock_plan_scripts,
-    mock_ensure_pb,
-    mock_ensure_scripts,
-    mock_ensure_analysis,
+    mock_check_analysis,
 ) -> None:
     source = type("P", (), {"slug": "src", "tenant_type": "xsoar6"})()
     target = type("P", (), {"slug": "dst", "tenant_type": "xsoar6"})()

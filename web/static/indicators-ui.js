@@ -56,25 +56,18 @@ function initIndicatorsUi() {
     return result;
   }
 
-  function showActionResult(result) {
-    const el = document.getElementById("indicators-action-result");
-    if (!el) return;
-    el.textContent = JSON.stringify(result, null, 2);
-    el.classList.remove("hidden");
-  }
-
   function initGrid() {
     table = new Tabulator("#indicators-grid", {
-      height: "420px",
+      height: typeof cptkGridHeight === "function" ? cptkGridHeight("default") : "420px",
       layout: "fitColumns",
       selectableRows: true,
       placeholder: "No cached data — click Refresh",
-      columns: [
+      columns: cptkEnhanceColumns([
         { formatter: "rowSelection", hozAlign: "center", headerSort: false, width: 44, frozen: true, title: "" },
         { title: "ID", field: "id", minWidth: 160 },
         { title: "Name", field: "name", minWidth: 180 },
         { title: "Type", field: "type", width: 140 },
-      ],
+      ]),
     });
     table.on("rowSelectionChanged", updateSelectionCount);
     const searchInput = document.getElementById("indicators-search");
@@ -167,7 +160,9 @@ function initIndicatorsUi() {
       });
       const proceed = await showConfirmDialog({
         title: "Delete BIOCs",
-        message: JSON.stringify(preview.entries, null, 2),
+        message: typeof formatPreviewEntries === "function"
+          ? formatPreviewEntries(preview, { title: "Delete BIOCs", itemLabel: "bioc" })
+          : JSON.stringify(preview.entries, null, 2),
         proceedLabel: "Delete",
       });
       if (!proceed) return;
@@ -181,7 +176,9 @@ function initIndicatorsUi() {
           "Deleting…",
         );
       }
-      showActionResult(result);
+      if (typeof showActionOutcome === "function") {
+        showActionOutcome("indicators-action-result", result, { itemLabel: "bioc", operation: "delete" });
+      }
       await refreshCache();
       return;
     }
@@ -207,7 +204,9 @@ function initIndicatorsUi() {
         "Deleting…",
       );
     }
-    showActionResult(result);
+    if (typeof showActionOutcome === "function") {
+      showActionOutcome("indicators-action-result", result, { itemLabel: "indicator", operation: "delete" });
+    }
     await refreshCache();
   }
 
@@ -243,7 +242,9 @@ function initIndicatorsUi() {
       );
       const proceed = await showConfirmDialog({
         title: "Copy BIOCs",
-        message: JSON.stringify(preview.entries, null, 2),
+        message: typeof formatPreviewEntries === "function"
+          ? formatPreviewEntries(preview, { title: "Copy BIOCs", itemLabel: "bioc" })
+          : JSON.stringify(preview.entries, null, 2),
         proceedLabel: "Copy",
       });
       if (!proceed) return;
@@ -257,9 +258,12 @@ function initIndicatorsUi() {
           busyButton: triggerButton,
           busyLabel: "Copying…",
         });
-        showActionResult(result);
+        if (typeof showActionOutcome === "function") {
+          showActionOutcome("indicators-action-result", result, { itemLabel: "bioc", operation: "copy" });
+        }
       } catch (err) {
-        alert(`Copy failed: ${err.message}`);
+        if (typeof showActionError === "function") showActionError(err.message, { title: "Copy failed" });
+        else alert(`Copy failed: ${err.message}`);
       }
       return;
     }
@@ -285,7 +289,9 @@ function initIndicatorsUi() {
     );
     const proceed = await showConfirmDialog({
       title: "Copy indicators",
-      message: JSON.stringify(preview.entries, null, 2),
+      message: typeof formatPreviewEntries === "function"
+        ? formatPreviewEntries(preview, { title: "Copy indicators", itemLabel: "indicator" })
+        : JSON.stringify(preview.entries, null, 2),
       proceedLabel: "Copy",
     });
     if (!proceed) return;
@@ -299,9 +305,12 @@ function initIndicatorsUi() {
         busyButton: triggerButton,
         busyLabel: "Copying…",
       });
-      showActionResult(result);
+      if (typeof showActionOutcome === "function") {
+        showActionOutcome("indicators-action-result", result, { itemLabel: "indicator", operation: "copy" });
+      }
     } catch (err) {
-      alert(`Copy failed: ${err.message}`);
+      if (typeof showActionError === "function") showActionError(err.message, { title: "Copy failed" });
+      else alert(`Copy failed: ${err.message}`);
     }
   }
 
@@ -325,11 +334,16 @@ function initIndicatorsUi() {
     document.getElementById("indicators-copy")?.addEventListener("click", (event) => {
       copySelected(event.currentTarget);
     });
-    document.getElementById("indicators-select-none")?.addEventListener("click", () => {
-      if (gridSearch) gridSearch.clearSelection();
-      else table?.deselectRow();
-      updateSelectionCount();
-    });
+    if (typeof bindGridSelectionToolbar === "function") {
+      bindGridSelectionToolbar({
+        table,
+        search: gridSearch,
+        visibleBtnId: "indicators-select-all-visible",
+        allBtnId: "indicators-select-all",
+        noneBtnId: "indicators-select-none",
+        onSelectionChange: updateSelectionCount,
+      });
+    }
   }
 
   initGrid();

@@ -49,7 +49,7 @@ def _sample_sub() -> dict:
 def test_build_structure_tree_lines(mock_build_index, mock_resolve, mock_load) -> None:
     mock_build_index.return_value = None
     mock_resolve.side_effect = lambda pid, pname: "sub-id" if (pid == "sub-id" or pname == "Sub PB") else None
-    mock_load.side_effect = lambda pb_id: _sample_sub() if pb_id == "sub-id" else _sample_root()
+    mock_load.side_effect = lambda pb_id, **_kwargs: _sample_sub() if pb_id == "sub-id" else _sample_root()
 
     resolver = CachePlaybookResolver(MagicMock(slug="lab"))
     lines = build_structure_tree_lines(_sample_root(), resolver)
@@ -63,7 +63,7 @@ def test_build_structure_tree_lines(mock_build_index, mock_resolve, mock_load) -
 def test_build_structure_graph(mock_build_index, mock_resolve, mock_load) -> None:
     mock_build_index.return_value = None
     mock_resolve.side_effect = lambda pid, pname: "sub-id" if (pid == "sub-id" or pname == "Sub PB") else None
-    mock_load.side_effect = lambda pb_id: _sample_sub() if pb_id == "sub-id" else _sample_root()
+    mock_load.side_effect = lambda pb_id, **_kwargs: _sample_sub() if pb_id == "sub-id" else _sample_root()
 
     resolver = CachePlaybookResolver(MagicMock(slug="lab"))
     graph = build_structure_graph(_sample_root(), resolver)
@@ -73,6 +73,7 @@ def test_build_structure_graph(mock_build_index, mock_resolve, mock_load) -> Non
     assert graph["edges"][0]["from"] == graph["nodes"][0]["id"]
 
 
+@patch("cortex_ps_toolkit.playbooks.analysis.ensure_analysis_downloads")
 @patch("cortex_ps_toolkit.playbooks.analysis.ensure_analysis_caches")
 @patch("cortex_ps_toolkit.playbooks.analysis.script_index_maps")
 @patch("cortex_ps_toolkit.playbooks.analysis.find_script_in_index")
@@ -88,11 +89,18 @@ def test_analyze_playbook_collects_scripts_and_subs(
     mock_find_script,
     mock_script_maps,
     mock_ensure,
+    mock_prefetch,
 ) -> None:
+    mock_prefetch.return_value = {
+        "playbooks_fetched": [],
+        "playbooks_fetched_count": 0,
+        "scripts_fetched": [],
+        "scripts_fetched_count": 0,
+    }
     mock_get_profile.return_value = MagicMock(slug="lab")
     mock_build_index.return_value = None
     mock_resolve.side_effect = lambda pid, pname: "sub-id" if (pid == "sub-id" or pname == "Sub PB") else None
-    mock_load.side_effect = lambda pb_id: _sample_sub() if pb_id == "sub-id" else _sample_root()
+    mock_load.side_effect = lambda pb_id, **_kwargs: _sample_sub() if pb_id == "sub-id" else _sample_root()
     http_script_id = "cdbde451-2283-4ae5-8e00-9c0d16fdcf16"
     mock_script_maps.return_value = (
         {},
@@ -159,6 +167,7 @@ def test_build_notes_includes_warnings_and_info() -> None:
     assert "unreachable" in messages
 
 
+@patch("cortex_ps_toolkit.playbooks.analysis.ensure_analysis_downloads")
 @patch("cortex_ps_toolkit.playbooks.analysis.ensure_analysis_caches")
 @patch("cortex_ps_toolkit.playbooks.analysis.script_index_maps")
 @patch("cortex_ps_toolkit.playbooks.analysis.find_script_in_index")
@@ -174,7 +183,14 @@ def test_analyze_playbook_resolves_uuid_commands(
     mock_find_script,
     mock_script_maps,
     mock_ensure,
+    mock_prefetch,
 ) -> None:
+    mock_prefetch.return_value = {
+        "playbooks_fetched": [],
+        "playbooks_fetched_count": 0,
+        "scripts_fetched": [],
+        "scripts_fetched_count": 0,
+    }
     script_uuid = "cdbde451-2283-4ae5-8e00-9c0d16fdcf16"
     mock_get_profile.return_value = MagicMock(slug="lab")
     mock_build_index.return_value = None

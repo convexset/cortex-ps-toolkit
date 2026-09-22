@@ -12,7 +12,7 @@ Cortex PS Toolkit is a **local professional-services workbench** for Cortex tena
 | **Thin web layer** | The future web app calls the same Python services the CLI uses |
 | **Credential-scoped cache** | Different API keys on the same tenant may see different content or permissions |
 | **Explicit platform support** | XSOAR 6, XSOAR 8, and XSIAM differ in auth and endpoints — abstract once, test per platform |
-| **Proven patterns** | Port behaviour from `bay/playbook-utils` and `bay/utilities` rather than redesigning |
+| **Proven patterns** | Port behaviour from `playbook-utils` and `bay/utilities` rather than redesigning |
 
 ---
 
@@ -80,21 +80,13 @@ Credential profile "BAY Prod (readonly)"
 
 See [`STORAGE.md`](STORAGE.md) and [`CREDENTIALS_AND_CACHE.md`](CREDENTIALS_AND_CACHE.md) for file formats.
 
-**Difference from playbook-utils today:** `bay/playbook-utils` uses `cache_key = host/tenant_type` only. This toolkit **adds `api_id`** so two keys on the same tenant do not share cache entries.
+**Difference from playbook-utils today:** `playbook-utils` uses `cache_key = host/tenant_type` only. This toolkit **adds `api_id`** so two keys on the same tenant do not share cache entries.
 
 ---
 
 ## Playbook refactor integration
 
-Two viable strategies (decide during phase 3 implementation):
-
-| Strategy | Pros | Cons |
-| --- | --- | --- |
-| **A. Vendored port** | Copy `playbook_utils` subset into `cortex_ps_toolkit/playbooks/refactor/` | Duplication; manual sync |
-| **B. Dependency** | Add `bay/playbook-utils` as editable path dependency | Cross-repo coupling |
-| **C. Extract shared package** | Move `playbook_utils` to `ai/` or a small shared lib | Best long-term; more upfront work |
-
-**Recommendation:** start with **B** (editable install from `bay/playbook-utils`) for speed; migrate to **C** if both repos need independent release cycles.
+**Playbook-utils location:** The canonical tree is **`playbook-utils/`** at the toolkit repo root (same code as the former `bay/playbook-utils`; `bay/playbook-utils` may symlink here). Default import path is set in `refactor_bridge._ensure_imported()`. Optional override: `CORTEX_PS_PLAYBOOK_UTILS_PATH` for a different checkout during development.
 
 Refactor behaviour to preserve (from playbook-utils):
 
@@ -181,7 +173,7 @@ Some workflows remain **sequential groups** inside their bridge until ported:
 | Workflow | Parallelism |
 | --- | --- |
 | **Component copy** | Scripts may copy in parallel; playbooks follow dependency order (subs before root). Sequential **phases**, parallel **within** a phase where safe. |
-| **Refactor / extract-multi** | **Default: sequential** (upload subs → refresh once → compare → post-task-update → descriptions → parent). **Experimental parallel variant** (`refactor_mode=parallel`, `--parallel`, or `refactor_execution_mode` in settings): parallel sub upload/compare/post-steps within each extract-multi; workflow presets with multiple steps may run Splunk+SIM refactors in parallel via `GraphExecutor`. Roll back by omitting the flag or setting mode to `sequential`. |
+| **Refactor / extract-multi** | **Default: parallel phase-1 sub uploads** (`refactor_execution_mode=parallel` in settings; five-phase flow with compare after parent). **Sequential variant** (`refactor_mode=sequential` or `--parallel` omitted with sequential settings): one sub at a time. Workflow presets with multiple steps may run independent refactors in parallel via `GraphExecutor`. |
 
 Do not flatten these into the global graph until the underlying operations are decomposed into independent tasks with explicit dependencies.
 

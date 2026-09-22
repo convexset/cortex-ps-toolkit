@@ -5,7 +5,9 @@ from __future__ import annotations
 import uuid
 from typing import Any, Callable, Literal, Optional
 
+from ..core.batch_copy_progress import emit_copy_item_step, make_batch_copy_progress
 from ..credentials import CredentialProfile, get_profile
+from ..ops_log import op_action, op_info
 from ..platforms import assert_operation_supported
 from . import api
 from .bundle import (
@@ -94,14 +96,16 @@ def plan_asset_copy(
     overwrite: bool = False,
     stop_on_conflict: bool = False,
     name_suffix: Optional[str] = None,
+    cache_only: bool = True,
 ) -> dict[str, Any]:
     source = get_profile(source_profile) if isinstance(source_profile, str) else source_profile
     target = get_profile(target_profile) if isinstance(target_profile, str) else target_profile
     assert_operation_supported(OPERATION_BY_ASSET[asset], source.tenant_type)
     assert_operation_supported(OPERATION_BY_ASSET[asset], target.tenant_type)
 
-    refresh_asset_cache(source, asset)
-    refresh_asset_cache(target, asset)
+    if not cache_only:
+        refresh_asset_cache(source, asset)
+        refresh_asset_cache(target, asset)
     target_ids = _cached_target_ids(target, asset)
     target_field_cli_names = (
         _target_incident_field_cli_names(target)
@@ -111,7 +115,7 @@ def plan_asset_copy(
 
     entries: list[dict[str, Any]] = []
     for item_id in item_ids:
-        body = get_item_body(source, asset, item_id)
+        body = get_item_body(source, asset, item_id, cache_only=cache_only)
         if body.get("packID"):
             entries.append({
                 "source_id": item_id,
@@ -184,119 +188,188 @@ def copy_assets_to_tenant(
     prefer_direct_on_xsoar6: bool = True,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
-    plan = plan_asset_copy(
-        source_profile,
-        target_profile,
-        asset,
-        item_ids,
-        overwrite=overwrite,
-        stop_on_conflict=stop_on_conflict,
-        name_suffix=name_suffix,
-    )
     source = get_profile(source_profile) if isinstance(source_profile, str) else source_profile
     target = get_profile(target_profile) if isinstance(target_profile, str) else target_profile
-
-    if any(entry.get("action") == "conflict" for entry in plan["entries"]):
-        plan["executed"] = False
-        plan["error"] = "conflicts detected (stop_on_conflict)"
-        return plan
-
-    to_write: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    results: list[dict[str, Any]] = []
-    target_field_cli_names = (
-        _target_incident_field_cli_names(target)
-        if asset == "incident-fields"
-        else None
+    progress = make_batch_copy_progress(
+        title=f"Object Setup Copy Progress ({asset})",
+        operation="design_content.copy",
+        on_progress=on_progress,
     )
-
-    def _progress(event: dict[str, Any]) -> None:
-        if on_progress:
-            on_progress({"asset": asset, **event})
-
-    for entry in plan["entries"]:
-        action = entry.get("action")
-        if action in ("skip", "blocked_pack"):
-            results.append({**entry, "status": "skipped"})
-            continue
-        source_body = get_item_body(source, asset, str(entry["source_id"]))
-        target_id = str(entry["target_id"])
-        target_name = str(entry.get("target_name") or target_id)
-        write_doc = prepare_write_document(
-            source_body,
-            new_id=target_id,
-            new_name=target_name,
-            asset=asset,
+    with op_action(
+        "Design content copy %s → %s asset=%s (%d item(s))",
+        source.slug,
+        target.slug,
+        asset,
+        len(item_ids),
+    ):
+        plan = plan_asset_copy(
+            source_profile,
+            target_profile,
+            asset,
+            item_ids,
+            overwrite=overwrite,
+            stop_on_conflict=stop_on_conflict,
+            name_suffix=name_suffix,
         )
-        if asset == "incident-fields" and target_name != str(source_body.get("name") or entry["source_id"]):
-            cli_name = derive_incident_field_cli_name(target_name)
-            write_doc["cliName"] = _ensure_unique_incident_field_cli_name(
-                cli_name,
-                target_id,
-                target_field_cli_names or {},
+        progress.complete_stage()
+
+        if any(entry.get("action") == "conflict" for entry in plan["entries"]):
+            plan["executed"] = False
+            plan["error"] = "conflicts detected (stop_on_conflict)"
+            return plan
+
+        to_write: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        results: list[dict[str, Any]] = []
+        target_field_cli_names = (
+            _target_incident_field_cli_names(target)
+            if asset == "incident-fields"
+            else None
+        )
+
+        def _progress(event: dict[str, Any]) -> None:
+            if on_progress:
+                on_progress({"asset": asset, **event})
+
+        for entry in plan["entries"]:
+            action = entry.get("action")
+            if action in ("skip", "blocked_pack"):
+                results.append({**entry, "status": "skipped"})
+                continue
+            source_body = get_item_body(source, asset, str(entry["source_id"]))
+            target_id = str(entry["target_id"])
+            target_name = str(entry.get("target_name") or target_id)
+            write_doc = prepare_write_document(
+                source_body,
+                new_id=target_id,
+                new_name=target_name,
+                asset=asset,
             )
-        if asset == "preprocess" and action in ("copy", "update"):
-            write_doc["id"] = str(uuid.uuid4()) if action == "copy" else write_doc.get("id", str(uuid.uuid4()))
-        to_write.append((entry, write_doc))
+            if asset == "incident-fields" and target_name != str(source_body.get("name") or entry["source_id"]):
+                cli_name = derive_incident_field_cli_name(target_name)
+                write_doc["cliName"] = _ensure_unique_incident_field_cli_name(
+                    cli_name,
+                    target_id,
+                    target_field_cli_names or {},
+                )
+            if asset == "preprocess" and action in ("copy", "update"):
+                write_doc["id"] = str(uuid.uuid4()) if action == "copy" else write_doc.get("id", str(uuid.uuid4()))
+            to_write.append((entry, write_doc))
 
-    if not to_write:
-        plan["results"] = results
-        plan["executed"] = True
-        return plan
+        if not to_write:
+            plan["results"] = results
+            plan["executed"] = True
+            progress.complete_stage()
+            progress.complete_stage()
+            return plan
 
-    if asset in ("incident-fields", "incident-types"):
-        for entry, write_doc in to_write:
-            _progress({"phase": "step", "step": "write", "target_id": entry.get("target_id")})
-            if asset == "incident-fields":
-                _, status = api.write_incident_field(target, write_doc)
-            else:
-                _, status = api.write_incident_type(target, write_doc)
-            result_entry = {**entry, "status": status, "channel": "direct"}
-            results.append(result_entry)
-            notify_item_copied(on_progress, asset, result_entry)
-    else:
-        use_direct = (
-            prefer_direct_on_xsoar6
-            and len(to_write) == 1
-            and target.tenant_type.value == "xsoar6"
-        )
-        if use_direct:
-            entry, write_doc = to_write[0]
-            _progress({"phase": "step", "step": "write", "target_id": entry.get("target_id"), "channel": "direct"})
-            if asset == "layouts":
-                _, status = import_layout_direct(target, write_doc)
-            elif asset == "classifiers":
-                _, status = import_classifier_direct(target, write_doc)
-            elif asset == "preprocess":
-                _, status = write_preprocess_direct(target, write_doc)
-            else:
-                _, status = _write_items_bundle(target, asset, [write_doc])[1]
-            result_entry = {**entry, "status": status, "channel": "direct"}
-            results.append(result_entry)
-            notify_item_copied(on_progress, asset, result_entry)
-        else:
-            _progress({"phase": "step", "step": "bundle_import", "count": len(to_write)})
-            _, status = _write_items_bundle(target, asset, [doc for _, doc in to_write])
-            for entry, _ in to_write:
-                result_entry = {**entry, "status": status, "channel": "bundle"}
+        write_total = len(to_write)
+        if asset in ("incident-fields", "incident-types"):
+            for write_index, (entry, write_doc) in enumerate(to_write, start=1):
+                target_name = str(entry.get("target_name") or entry.get("target_id") or "")
+                emit_copy_item_step(
+                    on_progress,
+                    source=source.slug,
+                    target=target.slug,
+                    item_label=asset,
+                    name=target_name,
+                    index=write_index,
+                    total=write_total,
+                    item_id=str(entry.get("target_id") or ""),
+                )
+                op_info(
+                    "Copying %s %r (%d/%d) %s → %s",
+                    asset,
+                    target_name,
+                    write_index,
+                    write_total,
+                    source.slug,
+                    target.slug,
+                )
+                _progress({"phase": "step", "step": "write", "target_id": entry.get("target_id")})
+                if asset == "incident-fields":
+                    _, status = api.write_incident_field(target, write_doc)
+                else:
+                    _, status = api.write_incident_type(target, write_doc)
+                result_entry = {**entry, "status": status, "channel": "direct"}
                 results.append(result_entry)
                 notify_item_copied(on_progress, asset, result_entry)
+        else:
+            use_direct = (
+                prefer_direct_on_xsoar6
+                and len(to_write) == 1
+                and target.tenant_type.value == "xsoar6"
+            )
+            if use_direct:
+                entry, write_doc = to_write[0]
+                target_name = str(entry.get("target_name") or entry.get("target_id") or "")
+                emit_copy_item_step(
+                    on_progress,
+                    source=source.slug,
+                    target=target.slug,
+                    item_label=asset,
+                    name=target_name,
+                    index=1,
+                    total=1,
+                    item_id=str(entry.get("target_id") or ""),
+                )
+                op_info("Copying %s %r (direct) %s → %s", asset, target_name, source.slug, target.slug)
+                _progress({"phase": "step", "step": "write", "target_id": entry.get("target_id"), "channel": "direct"})
+                if asset == "layouts":
+                    _, status = import_layout_direct(target, write_doc)
+                elif asset == "classifiers":
+                    _, status = import_classifier_direct(target, write_doc)
+                elif asset == "preprocess":
+                    _, status = write_preprocess_direct(target, write_doc)
+                else:
+                    _, status = _write_items_bundle(target, asset, [write_doc])[1]
+                result_entry = {**entry, "status": status, "channel": "direct"}
+                results.append(result_entry)
+                notify_item_copied(on_progress, asset, result_entry)
+            else:
+                _progress({"phase": "step", "step": "bundle_import", "count": len(to_write)})
+                op_info(
+                    "Copying %d %s item(s) via bundle %s → %s",
+                    len(to_write),
+                    asset,
+                    source.slug,
+                    target.slug,
+                )
+                _, status = _write_items_bundle(target, asset, [doc for _, doc in to_write])
+                for write_index, (entry, _) in enumerate(to_write, start=1):
+                    target_name = str(entry.get("target_name") or entry.get("target_id") or "")
+                    emit_copy_item_step(
+                        on_progress,
+                        source=source.slug,
+                        target=target.slug,
+                        item_label=asset,
+                        name=target_name,
+                        index=write_index,
+                        total=write_total,
+                        item_id=str(entry.get("target_id") or ""),
+                    )
+                    result_entry = {**entry, "status": status, "channel": "bundle"}
+                    results.append(result_entry)
+                    notify_item_copied(on_progress, asset, result_entry)
 
-    refresh_asset_cache(target, asset)
-    fidelity: list[dict[str, Any]] = []
-    for entry, write_doc in to_write:
-        target_id = str(entry["target_id"])
-        try:
-            read_back = get_item_body(target, asset, target_id)
-            diff = diff_design_assets(write_doc, read_back, asset)
-            fidelity.append({
-                "target_id": target_id,
-                "match": diff.equal,
-                "diff_keys": list(diff.diff_keys),
-            })
-        except KeyError:
-            fidelity.append({"target_id": target_id, "match": False, "diff_keys": ["not_found"]})
+        progress.complete_stage()
+        op_info("Refreshing %s cache on %s after copy", asset, target.slug)
+        refresh_asset_cache(target, asset)
+        progress.complete_stage()
+        fidelity: list[dict[str, Any]] = []
+        for entry, write_doc in to_write:
+            target_id = str(entry["target_id"])
+            try:
+                read_back = get_item_body(target, asset, target_id)
+                diff = diff_design_assets(write_doc, read_back, asset)
+                fidelity.append({
+                    "target_id": target_id,
+                    "match": diff.equal,
+                    "diff_keys": list(diff.diff_keys),
+                })
+            except KeyError:
+                fidelity.append({"target_id": target_id, "match": False, "diff_keys": ["not_found"]})
 
-    plan["results"] = results
-    plan["fidelity"] = fidelity
-    plan["executed"] = True
-    return plan
+        plan["results"] = results
+        plan["fidelity"] = fidelity
+        plan["executed"] = True
+        return plan

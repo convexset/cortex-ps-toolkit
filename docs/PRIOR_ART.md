@@ -8,8 +8,8 @@ Existing tools and libraries to **reuse, port, or wrap** when implementing Corte
 
 | Resource | Path | Reuse for |
 | --- | --- | --- |
-| Playbook utils package | [`bay/playbook-utils/`](../../bay/playbook-utils/) | Extract, compare, cache, client, refactor descriptions |
-| Agent guide | [`bay/playbook-utils/AGENTS.md`](../../bay/playbook-utils/AGENTS.md) | Extract pipeline, refactor descriptions, task updates |
+| Playbook utils package | [`playbook-utils/`](../../playbook-utils/) | Extract, compare, cache, client, refactor descriptions |
+| Agent guide | [`playbook-utils/AGENTS.md`](../../playbook-utils/AGENTS.md) | Extract pipeline, refactor descriptions, task updates |
 | Credentials loader | `playbook_utils/credentials.py` | JSON format, platform detection — **extend cache_key with api_id** |
 | Playbook cache | `playbook_utils/cache.py` | TTL, manifest, index, refresh — **change root path** |
 | HTTP client | `playbook_utils/client.py` | XSOAR 6/8/XSIAM endpoints, save/yaml, delete |

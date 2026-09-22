@@ -62,22 +62,10 @@ def write_playbooks_cache(profile: CredentialProfile, playbooks: list[dict[str, 
 
 
 def load_playbook_body(profile: CredentialProfile, playbook_id: str) -> Optional[dict[str, Any]]:
-    """Return cached playbook document when present and index modified stamp still matches."""
-    path = playbook_body_path(profile, playbook_id)
-    if not path.exists():
-        return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        return None
-    playbook = payload.get("playbook")
-    if not isinstance(playbook, dict):
-        return None
-    index_meta = find_playbook_in_index(profile, playbook_id=playbook_id)
-    cached_modified = payload.get("modified")
-    index_modified = (index_meta or {}).get("modified")
-    if index_meta and cached_modified != index_modified:
-        return None
-    return playbook
+    """Return cached playbook document when present and index ``modified`` stamp matches (strict)."""
+    from .body_lookup import load_playbook_body_strict
+
+    return load_playbook_body_strict(profile, playbook_id)
 
 
 def save_playbook_body(profile: CredentialProfile, playbook_id: str, playbook: Mapping[str, Any]) -> Path:

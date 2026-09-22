@@ -6,7 +6,7 @@
   <title>Cortex PS Toolkit</title>
   <link rel="icon" href="/static/logo.png" type="image/png" />
   <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator_midnight.min.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260921p" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260922v" />
 </head>
 <body>
   <div class="app">
@@ -17,9 +17,9 @@
       <div class="rail-primary">
         <button class="rail-btn" data-route="lists" title="List Tools">📝</button>
         <button class="rail-btn" data-route="scripts" title="Script Tools">⚙</button>
-        <button class="rail-btn" data-route="playbooks" title="Playbook Tools">📋</button>
+        <button class="rail-btn" data-route="playbooks" title="Playbook Tools">▶️</button>
         <button class="rail-btn" data-route="integrations" title="Integrations">🔌</button>
-        <button class="rail-btn" data-route="object-setup" title="Object Setup">📋</button>
+        <button class="rail-btn" data-route="object-setup" title="Object Setup">🧰</button>
         <button class="rail-btn" data-route="xql" title="XQL Query Tool">📊</button>
         <button class="rail-btn" data-route="indicators" title="Indicators (IOCs/BIOCs)">🎯</button>
         <button class="rail-btn" data-route="system-admin" title="User Administration">👥</button>
@@ -56,11 +56,6 @@
             <button type="button" class="secondary landing-card-link" data-route="credentials">Open API Profiles</button>
           </article>
           <article class="landing-card">
-            <h3>XQL Query Tool</h3>
-            <p>Run live XQL against XSIAM/XDR/AgentiX tenants with presets, visualisations, and query history.</p>
-            <button type="button" class="secondary landing-card-link" data-route="xql">Open XQL</button>
-          </article>
-          <article class="landing-card">
             <h3>List Tools</h3>
             <p>Refresh, browse, copy, and delete Cortex lists between tenants with conflict preview.</p>
             <button type="button" class="secondary landing-card-link" data-route="lists">Open Lists</button>
@@ -84,6 +79,11 @@
             <h3>Object Setup</h3>
             <p>Incident fields, types, layouts, classifiers, and pre-process rules — refresh, copy, delete, and cross-tenant Object Bundle workflows.</p>
             <button type="button" class="secondary landing-card-link" data-route="object-setup">Open Object Setup</button>
+          </article>
+          <article class="landing-card">
+            <h3>XQL Query Tool</h3>
+            <p>Run live XQL against XSIAM/XDR/AgentiX tenants with presets, visualisations, and query history.</p>
+            <button type="button" class="secondary landing-card-link" data-route="xql">Open XQL</button>
           </article>
           <article class="landing-card">
             <h3>Indicators</h3>
@@ -179,16 +179,18 @@
           Search
           <input type="search" id="playbooks-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
         </label>
+        <div class="grid-actions-bar selection-toolbar" aria-label="Playbook grid selection">
+          <span id="playbooks-selection-count" class="selection-count-badge" aria-live="polite">None selected</span>
+          <button type="button" id="playbooks-select-all-visible" class="secondary">Select visible</button>
+          <button type="button" id="playbooks-select-all" class="secondary">Select all</button>
+          <button type="button" id="playbooks-select-none" class="secondary">Deselect all</button>
+        </div>
         <div id="playbooks-grid"></div>
         <section id="playbooks-analysis-accordion" class="analysis-accordion hidden" aria-label="Playbook analyses"></section>
         <section class="copy-panel">
           <h2>Copy playbooks to other tenant</h2>
           <div class="selection-toolbar">
-            <button type="button" id="playbooks-select-all-visible">Select all visible</button>
-            <button type="button" id="playbooks-select-all">Select all</button>
-            <button type="button" id="playbooks-select-none">Select none</button>
             <button type="button" id="playbooks-delete" class="danger">Delete selected</button>
-            <span id="playbooks-selection-count" class="meta">0 selected</span>
           </div>
           <div class="copy-row">
             <label>
@@ -229,6 +231,7 @@
           <button type="button" id="scripts-refresh" class="primary">Refresh cache</button>
           <span id="scripts-meta" class="meta"></span>
         </div>
+        <p class="meta panel-hint">Double-click a script row, or select one and click View selected.</p>
         <label class="grid-search">
           Search
           <input type="search" id="scripts-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
@@ -301,6 +304,8 @@
           <section class="copy-panel">
             <h2>Actions</h2>
             <div class="selection-toolbar">
+              <button type="button" id="integrations-select-all-visible">Select all visible</button>
+              <button type="button" id="integrations-select-all">Select all</button>
               <button type="button" id="integrations-select-none">Select none</button>
               <button type="button" id="integrations-view">View selected</button>
               <button type="button" id="integrations-delete" class="danger">Delete selected</button>
@@ -308,10 +313,11 @@
             </div>
             <div class="copy-row">
               <label>Target profile <select id="integrations-copy-target"></select></label>
-              <label class="checkbox"><input type="checkbox" id="integrations-copy-overwrite" checked /> Overwrite</label>
+              <label class="checkbox"><input type="checkbox" id="integrations-copy-overwrite" /> Overwrite if name exists</label>
               <label class="checkbox"><input type="checkbox" id="integrations-copy-stop" /> Stop on conflict</label>
               <button type="button" id="integrations-copy" class="primary">Copy selected</button>
             </div>
+            <div id="integrations-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
             <pre id="integrations-action-result" class="result hidden"></pre>
           </section>
           <dialog id="integrations-delete-dialog">
@@ -331,12 +337,19 @@
         </div>
         <div class="integrations-tab-panel hidden" data-tab="instances">
           <p class="meta panel-hint">Double-click an instance row, or select one and click View selected.</p>
+          <label class="grid-search">
+            Search
+            <input type="search" id="integrations-instances-search" placeholder="Name or brand" autocomplete="off" spellcheck="false" />
+          </label>
           <div id="integrations-instances-grid"></div>
-          <div class="selection-toolbar">
-            <button type="button" id="integrations-instances-select-none">Select none</button>
-            <button type="button" id="integrations-instances-view">View selected</button>
-            <span id="integrations-instances-selection-count" class="meta">0 selected</span>
-          </div>
+          <section class="copy-panel">
+            <h2>Actions</h2>
+            <div class="selection-toolbar">
+              <button type="button" id="integrations-instances-select-none">Select none</button>
+              <button type="button" id="integrations-instances-view">View selected</button>
+              <span id="integrations-instances-selection-count" class="meta">0 selected</span>
+            </div>
+          </section>
         </div>
         <div class="integrations-tab-panel hidden" data-tab="commands">
           <p class="meta panel-hint">Double-click an integration row, or select one and click View selected.</p>
@@ -345,17 +358,21 @@
             <input type="search" id="integrations-commands-search" placeholder="Name or ID" autocomplete="off" spellcheck="false" />
           </label>
           <div id="integrations-commands-grid"></div>
-          <div class="selection-toolbar">
-            <button type="button" id="integrations-commands-select-none">Select none</button>
-            <button type="button" id="integrations-commands-view">View selected</button>
-            <span id="integrations-commands-selection-count" class="meta">0 selected</span>
-          </div>
+          <section class="copy-panel">
+            <h2>Actions</h2>
+            <div class="selection-toolbar">
+              <button type="button" id="integrations-commands-select-none">Select none</button>
+              <button type="button" id="integrations-commands-view">View selected</button>
+              <span id="integrations-commands-selection-count" class="meta">0 selected</span>
+            </div>
+          </section>
         </div>
         <div class="integrations-tab-panel hidden" data-tab="tenant-credentials">
-          <p class="meta panel-hint">Read-only metadata from tenant API. Secrets are not returned.</p>
+          <p class="meta panel-hint">Read-only metadata from tenant API. Double-click a row to view details. Secrets are not returned.</p>
           <div id="integrations-tenant-creds-grid"></div>
         </div>
         <div class="integrations-tab-panel hidden" data-tab="packs">
+          <p class="meta panel-hint">Installed content packs. Double-click a row to view details.</p>
           <div id="integrations-packs-grid"></div>
         </div>
         <div class="integrations-tab-panel hidden" data-tab="vault">
@@ -470,6 +487,7 @@
           <button type="button" id="object-setup-refresh" class="primary">Refresh cache</button>
           <span id="object-setup-meta" class="meta"></span>
         </div>
+        <p class="meta panel-hint">Select rows to copy or delete. Use Object Bundle to collect assets from multiple tabs.</p>
         <div class="integrations-tabs">
           <button type="button" class="object-setup-tab integrations-tab" data-asset="incident-types">Incident types</button>
           <button type="button" class="object-setup-tab integrations-tab" data-asset="incident-fields">Custom fields</button>
@@ -486,16 +504,19 @@
         <section class="copy-panel">
           <h2>Actions</h2>
           <div class="selection-toolbar">
+            <button type="button" id="object-setup-select-all-visible">Select all visible</button>
+            <button type="button" id="object-setup-select-all">Select all</button>
             <button type="button" id="object-setup-select-none">Select none</button>
             <button type="button" id="object-setup-delete" class="danger">Delete selected</button>
             <span id="object-setup-selection-count" class="meta">0 selected</span>
           </div>
           <div id="object-setup-copy-row" class="copy-row">
             <label>Target profile <select id="object-setup-copy-target"></select></label>
-            <label class="checkbox"><input type="checkbox" id="object-setup-copy-overwrite" checked /> Overwrite</label>
+            <label class="checkbox"><input type="checkbox" id="object-setup-copy-overwrite" /> Overwrite if name exists</label>
             <label class="checkbox"><input type="checkbox" id="object-setup-copy-stop" /> Stop on conflict</label>
             <button type="button" id="object-setup-copy" class="primary">Copy selected</button>
           </div>
+          <div id="object-setup-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
           <div class="workflow-section">
             <h3 class="workflow-heading">Object Bundle</h3>
             <p class="meta panel-hint admin-panel-note">Collect assets from any tab, then copy them together in dependency order. Only bundle items are copied — not the whole tenant.</p>
@@ -505,11 +526,33 @@
               <span id="object-setup-workflow-summary" class="meta">Bundle empty</span>
             </div>
             <ul id="object-setup-workflow-list" class="workflow-list hidden"></ul>
+            <div id="object-setup-bundle-save-row" class="copy-row workflow-toolbar">
+              <label>
+                Bundle identifier
+                <input type="text" id="object-setup-bundle-id" placeholder="e.g. phishing-workflow" autocomplete="off" title="Unique name for this source tenant; used to save and load" />
+              </label>
+              <button type="button" id="object-setup-save-bundle" class="secondary">Save bundle</button>
+              <label>
+                Load saved (this tenant)
+                <select id="object-setup-bundle-preset">
+                  <option value="">— select —</option>
+                </select>
+              </label>
+              <button type="button" id="object-setup-load-bundle" class="secondary">Load</button>
+              <button type="button" id="object-setup-delete-bundle" class="secondary">Delete saved</button>
+            </div>
           </div>
-          <div id="object-setup-orchestrate-row" class="copy-row">
+          <div id="object-setup-orchestrate-row" class="copy-row object-setup-bundle-copy-row">
             <label>Object Bundle Destination <select id="object-setup-orchestrate-target"></select></label>
-            <button type="button" id="object-setup-orchestrate">Copy Object Bundle</button>
+            <label class="checkbox" title="Replace objects on the destination when the same name already exists">
+              <input type="checkbox" id="object-setup-bundle-overwrite" /> Overwrite on destination
+            </label>
+            <label class="checkbox" title="Abort the bundle copy when any name already exists on the destination">
+              <input type="checkbox" id="object-setup-bundle-stop" /> Stop on conflict
+            </label>
+            <button type="button" id="object-setup-orchestrate" class="primary">Copy Object Bundle</button>
           </div>
+          <div id="object-setup-orchestrate-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
           <pre id="object-setup-action-result" class="result hidden"></pre>
         </section>
       </div>
@@ -519,6 +562,7 @@
           <button type="button" id="indicators-refresh-all">Refresh IOCs + BIOCs</button>
           <span id="indicators-meta" class="meta"></span>
         </div>
+        <p class="meta panel-hint">Select rows to copy or delete indicators and BIOCs between tenants.</p>
         <div class="integrations-tabs">
           <button type="button" class="indicators-tab integrations-tab" data-section="indicators">IOCs</button>
           <button type="button" class="indicators-tab integrations-tab" data-section="biocs">BIOCs</button>
@@ -531,16 +575,19 @@
         <section class="copy-panel">
           <h2>Actions</h2>
           <div class="selection-toolbar">
+            <button type="button" id="indicators-select-all-visible">Select all visible</button>
+            <button type="button" id="indicators-select-all">Select all</button>
             <button type="button" id="indicators-select-none">Select none</button>
             <button type="button" id="indicators-delete" class="danger">Delete selected</button>
             <span id="indicators-selection-count" class="meta">0 selected</span>
           </div>
           <div id="indicators-copy-row" class="copy-row">
             <label>Target profile <select id="indicators-copy-target"></select></label>
-            <label class="checkbox"><input type="checkbox" id="indicators-copy-overwrite" /> Overwrite</label>
+            <label class="checkbox"><input type="checkbox" id="indicators-copy-overwrite" /> Overwrite if name exists</label>
             <label class="checkbox"><input type="checkbox" id="indicators-copy-stop" /> Stop on conflict</label>
             <button type="button" id="indicators-copy" class="primary">Copy selected (BIOCs)</button>
           </div>
+          <div id="indicators-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
           <pre id="indicators-action-result" class="result hidden"></pre>
         </section>
       </div>
@@ -662,10 +709,21 @@
         <p id="content-viewer-subtitle" class="dialog-lead"></p>
       </header>
       <nav id="content-viewer-tabs" class="content-viewer-tabs" role="tablist" aria-label="Viewer tabs"></nav>
-      <pre id="content-viewer-panel" class="content-viewer-panel" tabindex="0"></pre>
+      <div id="content-viewer-panel" class="content-viewer-panel" tabindex="0"></div>
       <div class="dialog-actions">
         <button type="button" id="content-viewer-copy" class="secondary">Copy</button>
         <button type="submit" class="primary">Close</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="choice-dialog" class="app-dialog">
+    <form id="choice-dialog-form" method="dialog">
+      <h2 id="choice-dialog-title">Choose action</h2>
+      <pre id="choice-dialog-message" class="dialog-body"></pre>
+      <div class="dialog-actions">
+        <button type="button" id="choice-dialog-cancel" class="secondary">Cancel</button>
+        <button type="button" id="choice-dialog-secondary" class="secondary">Proceed anyway</button>
+        <button type="submit" class="primary" id="choice-dialog-primary">Refresh and proceed</button>
       </div>
     </form>
   </dialog>
@@ -682,7 +740,7 @@
   <dialog id="outcome-dialog" class="app-dialog">
     <form method="dialog">
       <h2 id="outcome-dialog-title">Operation complete</h2>
-      <p id="outcome-dialog-message" class="dialog-lead"></p>
+      <pre id="outcome-dialog-message" class="dialog-body"></pre>
       <div class="dialog-actions">
         <button type="submit" class="primary" id="outcome-dialog-ok">OK</button>
       </div>
@@ -696,24 +754,31 @@
   </div>
   <script src="https://unpkg.com/tabulator-tables@6.2.5/dist/js/tabulator.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js"></script>
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
-  <script src="/static/ws-client.js"></script>
-  <script src="/static/cache-meta.js?v=20260921e"></script>
-  <script src="/static/profile-context.js"></script>
-  <script src="/static/grid-search.js"></script>
-  <script src="/static/operation-progress-ui.js?v=20260921j"></script>
-  <script src="/static/content-viewer-ui.js?v=20260921a"></script>
-  <script src="/static/content-tools-ui.js?v=20260921o"></script>
-  <script src="/static/refactor-graph-validation.js"></script>
-  <script src="/static/playbooks-analysis-ui.js"></script>
-  <script src="/static/settings-ui.js"></script>
-  <script src="/static/xql-ui.js"></script>
-  <script src="/static/credentials-ui.js"></script>
-  <script src="/static/capabilities-ui.js?v=20260921c"></script>
-  <script src="/static/integrations-ui.js?v=20260921o"></script>
-  <script src="/static/object-setup-ui.js?v=20260921i"></script>
-  <script src="/static/indicators-ui.js?v=20260921i"></script>
-  <script src="/static/system-admin-ui.js?v=20260921e"></script>
-  <script src="/static/app.js?v=20260921h"></script>
+  <script src="/static/ws-client.js?v=20260922v"></script>
+  <script src="/static/dom-utils.js?v=20260922v"></script>
+  <script src="/static/panel-actions.js?v=20260922v"></script>
+  <script src="/static/cache-meta.js?v=20260922v"></script>
+  <script src="/static/stale-cache-ui.js?v=20260922v"></script>
+  <script src="/static/analysis-fetch-ui.js?v=20260922v"></script>
+  <script src="/static/profile-context.js?v=20260922v"></script>
+  <script src="/static/grid-search.js?v=20260922v"></script>
+  <script src="/static/tabulator-utils.js?v=20260922v"></script>
+  <script src="/static/operation-progress-ui.js?v=20260922v"></script>
+  <script src="/static/content-viewer-render.js?v=20260922v"></script>
+  <script src="/static/content-viewer-ui.js?v=20260922v"></script>
+  <script src="/static/content-tools-ui.js?v=20260922v"></script>
+  <script src="/static/refactor-graph-validation.js?v=20260922v"></script>
+  <script src="/static/playbooks-analysis-ui.js?v=20260922v"></script>
+  <script src="/static/settings-ui.js?v=20260922v"></script>
+  <script src="/static/xql-ui.js?v=20260922v"></script>
+  <script src="/static/credentials-ui.js?v=20260922v"></script>
+  <script src="/static/capabilities-ui.js?v=20260922v"></script>
+  <script src="/static/integrations-ui.js?v=20260922v"></script>
+  <script src="/static/object-setup-ui.js?v=20260922v"></script>
+  <script src="/static/indicators-ui.js?v=20260922v"></script>
+  <script src="/static/system-admin-ui.js?v=20260922v"></script>
+  <script src="/static/app.js?v=20260922v"></script>
 </body>
 </html>

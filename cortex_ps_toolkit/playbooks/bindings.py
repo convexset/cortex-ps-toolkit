@@ -1,4 +1,4 @@
-"""Rebind sub-playbook task references to target tenant cache (from bay/playbook-utils)."""
+"""Rebind sub-playbook task references to target tenant cache (from playbook-utils)."""
 
 from __future__ import annotations
 
@@ -32,6 +32,16 @@ def resolve_playbook_task_bindings(
         if playbook_id_remap and playbook_id_str in playbook_id_remap:
             playbook_id_str = str(playbook_id_remap[playbook_id_str])
             set_canonical(inner, "playbookId", playbook_id_str)
+
+        if playbook_id_str and playbook_id_str in id_to_name:
+            mapped_name = id_to_name[playbook_id_str]
+            resolved_by_name = name_to_id.get(mapped_name)
+            if resolved_by_name:
+                set_canonical(inner, "playbookId", resolved_by_name)
+                set_canonical(inner, "playbookName", mapped_name)
+                playbook_id_str = resolved_by_name
+                continue
+            set_canonical(inner, "playbookName", mapped_name)
 
         if playbook_id_str and playbook_id_str in name_to_id:
             resolved = name_to_id[playbook_id_str]

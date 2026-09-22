@@ -15,10 +15,10 @@ from cortex_ps_toolkit.playbooks.refactor_mode import (
 )
 
 
-def test_resolve_refactor_mode_defaults_sequential() -> None:
+def test_resolve_refactor_mode_defaults_parallel() -> None:
     with patch.dict(os.environ, {}, clear=True):
         with patch("cortex_ps_toolkit.playbooks.refactor_mode.load_settings", return_value={}):
-            assert resolve_refactor_mode() == REFACTOR_MODE_SEQUENTIAL
+            assert resolve_refactor_mode() == REFACTOR_MODE_PARALLEL
 
 
 def test_resolve_refactor_mode_env_override() -> None:
@@ -39,3 +39,7 @@ def test_resolve_refactor_mode_invalid_override() -> None:
 def test_is_parallel_mode() -> None:
     assert is_parallel_mode("parallel") is True
     assert is_parallel_mode("sequential") is False
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("cortex_ps_toolkit.playbooks.refactor_mode.load_settings", return_value={}):
+            assert is_parallel_mode() is True
+            assert is_parallel_mode(None) is True

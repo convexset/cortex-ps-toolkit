@@ -1,4 +1,8 @@
-/** Platform admin: correlation rules, IOCs, RBAC, API keys. */
+/**
+ * @deprecated Unused in the web shell — superseded by system-admin-ui.js + indicators-ui.js.
+ * Kept for reference only; not loaded from index.html.
+ * Platform admin: correlation rules, IOCs, RBAC, API keys.
+ */
 
 const ADMIN_SECTIONS = [
   "correlation-rules",
@@ -101,13 +105,13 @@ function initPlatformAdminUi() {
       layout: "fitColumns",
       selectableRows: true,
       placeholder: "No cached data — click Refresh",
-      columns: [
+      columns: cptkEnhanceColumns([
         { formatter: "rowSelection", hozAlign: "center", headerSort: false, width: 44, frozen: true, title: "" },
         { title: "ID", field: "id", minWidth: 160 },
         { title: "Name", field: "name", minWidth: 180 },
         { title: "Type / Role", field: "type", width: 140 },
         { title: "Extra", field: "role", width: 120 },
-      ],
+      ]),
     });
     table.on("rowSelectionChanged", updateSelectionCount);
     const searchInput = document.getElementById("platform-admin-search");

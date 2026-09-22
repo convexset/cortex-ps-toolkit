@@ -12,6 +12,9 @@ def _task_sort_key(task_id: str) -> tuple[int, str]:
 
 
 def _import_graph():
+    from .refactor_bridge import _ensure_imported
+
+    _ensure_imported()
     from playbook_utils.graph import check_cluster_extract, check_combined_extract, check_potential_root
     from playbook_utils.keys import inner_task, playbook_tasks, task_name, task_type
 
@@ -25,25 +28,22 @@ def _truncate_description(text: str, *, max_len: int = 72) -> str:
     return collapsed[: max_len - 1].rstrip() + "…"
 
 
-def _task_description(node: Mapping[str, Any]) -> str:
-    _, _, _, inner_task, _, _, _ = _import_graph()
-    inner = inner_task(node)
-    return str(inner.get("description") or node.get("description") or "")
-
-
 def build_refactor_task_catalog(playbook: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Per-task metadata for refactor dropdowns (root playbook)."""
-    _, _, check_potential_root, _, playbook_tasks, task_name, task_type = _import_graph()
+    _, _, check_potential_root, inner_task, playbook_tasks, task_name, task_type = _import_graph()
+    from playbook_utils.keys import normalize_playbook
 
+    normalized = normalize_playbook(playbook)
     catalog: list[dict[str, Any]] = []
-    tasks = playbook_tasks(playbook)
+    tasks = playbook_tasks(normalized)
     for task_id in sorted(tasks.keys(), key=_task_sort_key):
         node = tasks[task_id]
         ttype = str(task_type(node) or "unknown")
         if ttype == "start":
             continue
-        description = _task_description(node)
-        check = check_potential_root(playbook, str(task_id))
+        inner = inner_task(node)
+        description = str(inner.get("description") or node.get("description") or "")
+        check = check_potential_root(normalized, str(task_id))
         catalog.append(
             {
                 "id": str(task_id),

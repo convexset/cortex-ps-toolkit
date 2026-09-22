@@ -4,6 +4,10 @@ const TARGET_PROFILE_CONTEXTS = [
   ["copy-target", "lists-copy-target-context"],
   ["playbooks-copy-target", "playbooks-copy-target-context"],
   ["scripts-copy-target", "scripts-copy-target-context"],
+  ["integrations-copy-target", "integrations-copy-target-context"],
+  ["object-setup-copy-target", "object-setup-copy-target-context"],
+  ["object-setup-orchestrate-target", "object-setup-orchestrate-target-context"],
+  ["indicators-copy-target", "indicators-copy-target-context"],
 ];
 
 const PROFILE_PICKER_ROUTES_FALLBACK = new Set(["lists", "playbooks", "scripts", "xql"]);
@@ -48,6 +52,7 @@ function profileBySlug(slug) {
 }
 
 function escapeHtml(text) {
+  if (typeof window.escapeHtml === "function") return window.escapeHtml(text);
   return String(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -105,8 +110,14 @@ async function refreshProfileCacheContext() {
     const status = await api(`/api/cache/status?profile=${encodeURIComponent(profile.slug)}`);
     const cacheLine =
       typeof formatCacheStatusSummary === "function" ? formatCacheStatusSummary(status) : "";
+    const tooltip =
+      typeof formatExtendedCacheTooltip === "function" ? formatExtendedCacheTooltip(status) : cacheLine;
     if (cacheLine) {
-      bar.innerHTML = `${renderProfileContext(profile, "Operating on")}<br><span class="profile-context-cache">${cacheLine}</span>`;
+      const cacheHtml =
+        typeof renderCacheMetaHtml === "function"
+          ? renderCacheMetaHtml(cacheLine, tooltip)
+          : cacheLine;
+      bar.innerHTML = `${renderProfileContext(profile, "Operating on")}<br><span class="profile-context-cache">${cacheHtml}</span>`;
     }
   } catch (_) {
     /* keep base profile line only */

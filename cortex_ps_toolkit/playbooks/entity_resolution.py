@@ -1,6 +1,6 @@
 """Resolve playbook task bindings to tenant cache entities (analysis + copy).
 
-Patterns aligned with bay/playbook-utils: ``playbookName`` / cache name lookup is
+Patterns aligned with playbook-utils: ``playbookName`` / cache name lookup is
 authoritative for sub-playbooks; script UUIDs map through the scripts index; integration
 commands (``Brand|||command``) are not custom automations for copy scope.
 """

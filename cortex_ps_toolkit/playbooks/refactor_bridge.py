@@ -1,4 +1,4 @@
-"""Bridge to bay/playbook-utils for live playbook refactor operations."""
+"""Bridge to in-repo playbook-utils for live playbook refactor operations."""
 
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ def playbook_utils_root() -> Path:
     if raw:
         path = Path(raw).expanduser().resolve()
     else:
-        path = (package_root().parent / "bay" / "playbook-utils").resolve()
+        path = (package_root() / "playbook-utils").resolve()
     if not (path / "playbook_utils").is_dir():
         raise RuntimeError(
-            f"bay/playbook-utils not found at {path}. "
-            "Clone the repo sibling or set CORTEX_PS_PLAYBOOK_UTILS_PATH."
+            f"playbook-utils not found at {path}. "
+            "Set CORTEX_PS_PLAYBOOK_UTILS_PATH to override."
         )
     return path
 
@@ -60,7 +60,8 @@ def resolve_playbook_utils_cache_dir(job_cache_key: Optional[str] = None) -> Pat
 def _ensure_imported() -> None:
     root = str(playbook_utils_root())
     if root not in sys.path:
-        sys.path.insert(0, root)
+        # Append so repo `tests/` is not shadowed by playbook-utils/tests/.
+        sys.path.append(root)
 
 
 def profile_credentials_payload(profile: CredentialProfile) -> dict[str, Any]:
@@ -110,8 +111,11 @@ def build_extract_multi_args(
     force: bool = False,
     padding: float = 400.0,
     quiet: bool = True,
-    parallel: bool = False,
+    parallel: bool = True,
     parallel_workers: Optional[int] = None,
+    compare_after_parent: bool = False,
+    refresh_after_parent_upload: bool = True,
+    overwrite_existing: bool = False,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
     cache_dir: Optional[str | Path] = None,
     job_cache_key: Optional[str] = None,
@@ -143,6 +147,9 @@ def build_extract_multi_args(
         padding=padding,
         parallel=parallel,
         parallel_workers=parallel_workers,
+        compare_after_parent=compare_after_parent,
+        refresh_after_parent_upload=refresh_after_parent_upload,
+        overwrite_existing=overwrite_existing,
     )
 
 
@@ -215,24 +222,27 @@ def playbook_utils_runtime(
 
 @contextmanager
 def progress_debug_sink(on_progress: Optional[Callable[[dict[str, Any]], None]]) -> Iterator[None]:
-    """Forward playbook-utils DebugSink.log lines to *on_progress*."""
-    if not on_progress:
-        yield
-        return
+    """Route playbook-utils logs through ops_log and optional *on_progress*."""
     _ensure_imported()
-    from playbook_utils import debugio
+    from playbook_utils.debugio import log_handler_context
 
-    original_log = debugio.DebugSink.log
+    from .refactor_logging import emit_playbook_utils_log
 
-    def patched_log(self, message: str) -> None:
-        original_log(self, message)
-        on_progress({"phase": "log", "message": message})
+    def handler(message: str) -> None:
+        emit_playbook_utils_log(message)
+        if on_progress:
+            on_progress({"phase": "log", "message": message})
 
-    debugio.DebugSink.log = patched_log
+    from ..ops_log import configure_ops_logging, op_info
+    from playbook_utils.operation_log import set_info_logger
+
+    configure_ops_logging()
+    set_info_logger(op_info)
     try:
-        yield
+        with log_handler_context(handler):
+            yield
     finally:
-        debugio.DebugSink.log = original_log
+        set_info_logger(None)
 
 
 def read_debug_result(debug_dir: Path) -> dict[str, Any]:

@@ -2,6 +2,15 @@
 
 let analysisCounter = 0;
 
+window.cptkOpProgress =
+  window.cptkOpProgress ||
+  (typeof createOperationProgress === "function"
+    ? createOperationProgress("Playbook Copy Progress")
+    : null);
+
+const playbookAnalysisProgress =
+  typeof createOperationProgress === "function" ? createOperationProgress("Playbook analysis") : null;
+
 function initPlaybooksAnalysisPanel() {
   document.getElementById("playbooks-analyze")?.addEventListener("click", analyzeSelectedPlaybook);
 }
@@ -23,11 +32,24 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
-function renderAnalysisTableHtml(headers, rows) {
+function renderAnalysisTableHtml(headers, rows, options = {}) {
+  if (typeof renderAnalysisTableMountHtml === "function") {
+    return renderAnalysisTableMountHtml(headers, rows, options);
+  }
   const head = headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
   const body = rows.length
     ? rows
-        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell))}</td>`).join("")}</tr>`)
+        .map((row) => {
+          const cells = row
+            .map((cell) => {
+              if (cell && typeof cell === "object" && cell.html != null) {
+                return `<td>${cell.html}</td>`;
+              }
+              return `<td>${escapeHtml(String(cell))}</td>`;
+            })
+            .join("");
+          return `<tr>${cells}</tr>`;
+        })
         .join("")
     : `<tr><td colspan="${headers.length}">None</td></tr>`;
   return `<table class="analysis-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
@@ -41,13 +63,22 @@ function renderTooltipCell(label, tooltip) {
   return `<span class="analysis-tooltip" title="${escapeHtml(String(tooltip))}">${text}</span>`;
 }
 
+function analysisHelpPlainText(html) {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function analysisHelpButton(summary, detailHtml = "") {
-  const short = escapeHtml(String(summary || ""));
-  const detail = detailHtml ? `<span class="analysis-help-detail hidden">${detailHtml}</span>` : "";
+  const summaryText = String(summary || "").trim();
+  const detailText = detailHtml ? analysisHelpPlainText(detailHtml) : "";
+  const message = detailText ? `${summaryText}\n\n${detailText}` : summaryText;
   return (
     `<span class="analysis-help-wrap">` +
-    `<button type="button" class="analysis-help-btn" aria-label="Help" title="${short}">?</button>` +
-    detail +
+    `<button type="button" class="analysis-help-btn" aria-label="Help" data-help-message="${escapeHtml(message)}">?</button>` +
     `</span>`
   );
 }
@@ -61,14 +92,9 @@ function bindAnalysisHelp(root) {
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const detail = button.parentElement?.querySelector(".analysis-help-detail");
-      if (detail) {
-        detail.classList.toggle("hidden");
-        return;
-      }
-      const title = button.getAttribute("title");
-      if (title && typeof showOutcomeDialog === "function") {
-        showOutcomeDialog({ title: "Help", message: title, success: true });
+      const message = button.dataset.helpMessage || "";
+      if (message && typeof showOutcomeDialog === "function") {
+        showOutcomeDialog({ title: "Help", message, success: true });
       }
     });
   });
@@ -102,23 +128,80 @@ function bindAnalysisSectionNav(root, panelKey) {
 }
 
 function buildCommandsTableHtml(commands) {
-  const rows = (commands || [])
-    .map(
-      (row) =>
-        `<tr>` +
-        `<td>${renderTooltipCell(row.command, row.raw)}</td>` +
-        `<td>${escapeHtml(String(row.count))}</td>` +
-        `</tr>`,
-    )
-    .join("");
-  return (
-    `<table class="analysis-table"><thead><tr><th>Command</th><th>Count</th></tr></thead>` +
-    `<tbody>${rows || '<tr><td colspan="2">None</td></tr>'}</tbody></table>`
-  );
+  const rows = (commands || []).map((row) => [
+    { html: renderTooltipCell(row.command, row.raw) },
+    row.count,
+  ]);
+  return renderAnalysisTableHtml(["Command", "Count"], rows, { height: "280px" });
 }
 
 function formatTaskListingMetric(value) {
   return value == null || value === "" ? "—" : String(value);
+}
+
+function buildPlaybookNameMaps(data) {
+  const idToName = {};
+  const nameToId = {};
+  for (const pb of data?.playbooks_in_tree || []) {
+    const id = pb?.id != null ? String(pb.id) : "";
+    const name = pb?.name != null ? String(pb.name) : "";
+    if (id && name) {
+      idToName[id] = name;
+      nameToId[name] = id;
+    }
+  }
+  return { idToName, nameToId };
+}
+
+function formatPlaybookReference(value, maps) {
+  const raw = String(value || "");
+  if (!raw) {
+    return "—";
+  }
+  let name = "";
+  let id = "";
+  if (maps.idToName[raw]) {
+    name = maps.idToName[raw];
+    id = raw;
+  } else if (maps.nameToId[raw]) {
+    name = raw;
+    id = maps.nameToId[raw];
+  } else {
+    return escapeHtml(raw);
+  }
+  const tooltip = id && id !== name ? id : "";
+  return tooltip ? renderTooltipCell(name, tooltip) : escapeHtml(name);
+}
+
+function formatPlaybookReferenceList(values, maps) {
+  if (!Array.isArray(values) || !values.length) {
+    return "—";
+  }
+  return values.map((value) => formatPlaybookReference(value, maps)).join(", ");
+}
+
+function formatConditionalBranchList(branches, data, pb) {
+  if (!Array.isArray(branches) || !branches.length) {
+    return "—";
+  }
+  const flowIndex = flowGraphIndexForPlaybook(data, pb.playbook_id);
+  return branches
+    .map((branch) => {
+      if (branch && typeof branch === "object") {
+        const label = escapeHtml(branch.label || "—");
+        const conditionTaskId = branch.condition_task_id != null ? String(branch.condition_task_id) : "";
+        if (!conditionTaskId) {
+          return label;
+        }
+        return (
+          `<button type="button" class="playbook-task-focus-link" data-flow-index="${flowIndex}" ` +
+          `data-task-id="${escapeHtml(conditionTaskId)}" title="Show condition task in flow graph">${label}</button>`
+        );
+      }
+      const label = escapeHtml(String(branch));
+      return label;
+    })
+    .join(", ");
 }
 
 function flowGraphIndexForPlaybook(data, playbookId) {
@@ -142,56 +225,74 @@ const PLAYBOOK_TASK_LISTING_HEADERS = [
   "Conditional branches",
 ];
 
-function playbookTaskListingRowHtml(data, pb, task) {
+function playbookTaskListingRowHtml(data, pb, task, playbookMaps) {
   const flowIndex = flowGraphIndexForPlaybook(data, pb.playbook_id);
   return [
-    `<button type="button" class="playbook-task-focus-link" data-flow-index="${flowIndex}" data-task-id="${escapeHtml(task.task_id)}" title="Show in flow graph">#${escapeHtml(task.task_id)}</button>`,
-    escapeHtml(task.title || "—"),
-    escapeHtml(task.task_type || "—"),
-    escapeHtml(formatTaskSummaryList(task.scripts)),
-    escapeHtml(formatTaskSummaryList(task.playbooks)),
-    escapeHtml(formatTaskSummaryList(task.commands)),
+    {
+      html:
+        `<button type="button" class="playbook-task-focus-link" data-flow-index="${flowIndex}" ` +
+        `data-task-id="${escapeHtml(task.task_id)}" title="Show in flow graph">#${escapeHtml(task.task_id)}</button>`,
+    },
+    task.title || "—",
+    task.task_type || "—",
+    formatTaskSummaryList(task.scripts),
+    { html: formatPlaybookReferenceList(task.playbooks, playbookMaps) },
+    formatTaskSummaryList(task.commands),
     task.expanded_reachable ? "Yes" : "No",
     formatTaskListingMetric(task.min_steps_from_start),
     formatTaskListingMetric(task.max_steps_from_start),
     formatTaskListingMetric(task.min_steps_to_terminal),
     formatTaskListingMetric(task.max_steps_to_terminal),
-    escapeHtml(formatTaskSummaryList(task.conditional_branches)),
+    { html: formatConditionalBranchList(task.conditional_branches, data, pb) },
   ];
 }
 
 function buildPlaybookTaskListingsHtml(data) {
+  const playbookMaps = buildPlaybookNameMaps(data);
   return (data.playbook_task_listings || [])
     .map((pb) => {
-      const rows = (pb.tasks || []).map((task) => playbookTaskListingRowHtml(data, pb, task));
+      const tasks = pb.tasks || [];
+      const reachableCount = tasks.filter((task) => task.expanded_reachable).length;
+      const rows = tasks.map((task) => playbookTaskListingRowHtml(data, pb, task, playbookMaps));
       const role = pb.role ? ` · ${escapeHtml(pb.role)}` : "";
+      const summary =
+        `${escapeHtml(pb.playbook_name || pb.playbook_id)}${role}` +
+        ` · ${tasks.length} task(s)` +
+        ` · ${reachableCount} reachable`;
       return (
-        `<div class="playbook-task-listing">` +
-        `<h4>${escapeHtml(pb.playbook_name || pb.playbook_id)}${role}</h4>` +
-        renderAnalysisTableHtml(PLAYBOOK_TASK_LISTING_HEADERS, rows) +
-        `</div>`
+        `<details class="playbook-task-listing analysis-accordion-item" open>` +
+        `<summary class="analysis-accordion-summary playbook-task-listing-summary">${summary}</summary>` +
+        `<div class="analysis-accordion-body">` +
+        renderAnalysisTableHtml(PLAYBOOK_TASK_LISTING_HEADERS, rows, { height: "min(480px, 60vh)" }) +
+        `</div></details>`
       );
     })
     .join("");
 }
 
 function bindPlaybookTaskListingLinks(details, panelKey) {
-  details.querySelectorAll(".playbook-task-focus-link").forEach((button) => {
-    button.addEventListener("click", () => {
-      const flowIndex = Number(button.dataset.flowIndex);
-      const taskId = button.dataset.taskId;
-      const hostId = `flow-graph-host-${panelKey}`;
-      const host = document.getElementById(hostId);
-      if (host && taskId) {
-        host.dataset.selectedTaskId = String(taskId);
-      }
-      if (Number.isFinite(flowIndex) && details._selectFlowTask) {
-        details._selectFlowTask(taskId, flowIndex);
-      } else if (details._selectFlowTask) {
-        details._selectFlowTask(taskId);
-      }
-      document.getElementById(`section-flow-${panelKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+  if (details.dataset.taskFocusBound === panelKey) {
+    return;
+  }
+  details.dataset.taskFocusBound = panelKey;
+  details.addEventListener("click", (event) => {
+    const button = event.target.closest(".playbook-task-focus-link");
+    if (!button || !details.contains(button)) {
+      return;
+    }
+    const flowIndex = Number(button.dataset.flowIndex);
+    const taskId = button.dataset.taskId;
+    const hostId = `flow-graph-host-${panelKey}`;
+    const host = document.getElementById(hostId);
+    if (host && taskId) {
+      host.dataset.selectedTaskId = String(taskId);
+    }
+    if (Number.isFinite(flowIndex) && details._selectFlowTask) {
+      details._selectFlowTask(taskId, flowIndex);
+    } else if (details._selectFlowTask) {
+      details._selectFlowTask(taskId);
+    }
+    document.getElementById(`section-flow-${panelKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
 
@@ -941,7 +1042,7 @@ function highlightFlowNeighborhood(host, graph, taskId) {
   }
 }
 
-function selectFlowNode(host, graph, detailHost, entry, taskId) {
+function selectFlowNode(host, graph, detailHost, entry, taskId, options = {}) {
   if (!host || !graph || !taskId) {
     return false;
   }
@@ -963,7 +1064,10 @@ function selectFlowNode(host, graph, detailHost, entry, taskId) {
   if (jumpInput) {
     jumpInput.value = node.id;
   }
-  group?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  if (options.centerView) {
+    const viewState = host.closest("details")?._flowGraphViewState;
+    centerFlowGraphOnTask(host, graph, node.id, viewState);
+  }
   return true;
 }
 
@@ -974,7 +1078,7 @@ function bindFlowGraphDetailActions(host, graph, detailHost, entry, details) {
   detailHost.onclick = (event) => {
     const peer = event.target.closest(".flow-peer-link");
     if (peer?.dataset.taskId) {
-      selectFlowNode(host, graph, detailHost, entry, peer.dataset.taskId);
+      selectFlowNode(host, graph, detailHost, entry, peer.dataset.taskId, { centerView: true });
       return;
     }
     const copyBtn = event.target.closest(".flow-copy-task-id");
@@ -1031,7 +1135,7 @@ function bindFlowGraphNodeClicks(host, graph, detailHost, entry, details) {
 
 const FLOW_GRAPH_VIEW_PAD = 32;
 const FLOW_GRAPH_MIN_VIEW_SIZE = 140;
-const FLOW_START_TASK_VIEWPORT_FRACTION = 0.1;
+const FLOW_RESET_START_NODE_WIDTH_FRACTION = 0.15;
 const FLOW_GRAPH_STAGE_HEIGHT_PCTS = [50, 60, 70, 80, 90];
 const FLOW_GRAPH_DEFAULT_STAGE_HEIGHT_PCT = 60;
 
@@ -1128,14 +1232,66 @@ function flowGraphStageSize(host) {
   return { width: stage.clientWidth, height: stage.clientHeight };
 }
 
+function flowGraphSvgContentRoot(svg) {
+  if (!svg) {
+    return null;
+  }
+  return svg.querySelector("g.root") || svg.querySelector(":scope > g") || svg;
+}
+
+function flowGraphElementBoundsInSvgUserSpace(svg, element) {
+  if (!svg || !element || typeof element.getBBox !== "function") {
+    return null;
+  }
+  const box = element.getBBox();
+  if (!box.width && !box.height) {
+    return null;
+  }
+  const screenToUser =
+    typeof svg.getScreenCTM === "function" ? svg.getScreenCTM()?.inverse() : null;
+  const elementToScreen =
+    typeof element.getScreenCTM === "function" ? element.getScreenCTM() : null;
+  if (!screenToUser || !elementToScreen || typeof svg.createSVGPoint !== "function") {
+    return box.width && box.height ? box : null;
+  }
+  const toUser = screenToUser.multiply(elementToScreen);
+  const points = [
+    { x: box.x, y: box.y },
+    { x: box.x + box.width, y: box.y },
+    { x: box.x + box.width, y: box.y + box.height },
+    { x: box.x, y: box.y + box.height },
+  ];
+  const xs = [];
+  const ys = [];
+  for (const point of points) {
+    const svgPoint = svg.createSVGPoint();
+    svgPoint.x = point.x;
+    svgPoint.y = point.y;
+    const transformed = svgPoint.matrixTransform(toUser);
+    xs.push(transformed.x);
+    ys.push(transformed.y);
+  }
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return {
+    x,
+    y,
+    width: Math.max(...xs) - x,
+    height: Math.max(...ys) - y,
+  };
+}
+
 function flowGraphContentBBox(host) {
   const svg = host.querySelector(".flow-graph-stage svg");
   if (!svg) {
     return null;
   }
-  const contentRoot = svg.querySelector("g.root") || svg;
-  const bbox = contentRoot.getBBox();
-  if (!bbox.width || !bbox.height) {
+  const contentRoot = flowGraphSvgContentRoot(svg);
+  const bbox =
+    contentRoot === svg
+      ? contentRoot.getBBox()
+      : flowGraphElementBoundsInSvgUserSpace(svg, contentRoot) || contentRoot.getBBox();
+  if (!bbox?.width || !bbox?.height) {
     return null;
   }
   return bbox;
@@ -1206,39 +1362,10 @@ function resolveFlowGraphStartTaskId(graph) {
 function flowGraphNodeBounds(host, taskId, graph, viewState = null) {
   const group = findFlowNodeGroup(host, flowNodeMermaidId(taskId), taskId);
   const svg = host.querySelector(".flow-graph-stage svg");
-  if (group && svg && typeof group.getBBox === "function") {
-    const box = group.getBBox();
-    if (typeof group.getCTM === "function" && typeof svg.createSVGPoint === "function") {
-      const matrix = group.getCTM();
-      if (matrix) {
-        const points = [
-          { x: box.x, y: box.y },
-          { x: box.x + box.width, y: box.y },
-          { x: box.x + box.width, y: box.y + box.height },
-          { x: box.x, y: box.y + box.height },
-        ];
-        const xs = [];
-        const ys = [];
-        for (const point of points) {
-          const svgPoint = svg.createSVGPoint();
-          svgPoint.x = point.x;
-          svgPoint.y = point.y;
-          const transformed = svgPoint.matrixTransform(matrix);
-          xs.push(transformed.x);
-          ys.push(transformed.y);
-        }
-        const x = Math.min(...xs);
-        const y = Math.min(...ys);
-        return {
-          x,
-          y,
-          width: Math.max(...xs) - x,
-          height: Math.max(...ys) - y,
-        };
-      }
-    }
-    if (box.width && box.height) {
-      return box;
+  if (group && svg) {
+    const userBounds = flowGraphElementBoundsInSvgUserSpace(svg, group);
+    if (userBounds?.width && userBounds?.height) {
+      return userBounds;
     }
   }
   const node = (graph?.nodes || []).find((item) => item.id === String(taskId));
@@ -1255,6 +1382,67 @@ function flowGraphNodeBounds(host, taskId, graph, viewState = null) {
   return null;
 }
 
+function focusFlowGraphCenterOnNode(
+  host,
+  taskId,
+  graph,
+  viewState = null,
+  horizontalNodeFraction = FLOW_RESET_START_NODE_WIDTH_FRACTION,
+) {
+  const stageSize = flowGraphStageSize(host);
+  const state = host._flowViewState;
+  if (!stageSize || !state?.contentBbox || !taskId || !graph) {
+    return false;
+  }
+  const nodeBounds = flowGraphNodeBounds(host, taskId, graph, viewState);
+  if (!nodeBounds?.width || !nodeBounds?.height) {
+    return false;
+  }
+  const fraction = horizontalNodeFraction > 0 ? horizontalNodeFraction : FLOW_RESET_START_NODE_WIDTH_FRACTION;
+  const stageAspect = stageSize.width / stageSize.height;
+  const viewWidth = Math.max(nodeBounds.width / fraction, FLOW_GRAPH_MIN_VIEW_SIZE);
+  const viewHeight = viewWidth / stageAspect;
+  const centerX = nodeBounds.x + nodeBounds.width / 2;
+  const centerY = nodeBounds.y + nodeBounds.height / 2;
+  state.vx = centerX - viewWidth / 2;
+  state.vy = centerY - viewHeight / 2;
+  state.vw = viewWidth;
+  state.vh = viewHeight;
+  applyFlowGraphViewBox(host);
+  syncFlowViewState(host, viewState);
+  return true;
+}
+
+function centerFlowGraphOnTask(host, graph, taskId, viewState = null) {
+  if (!host || !graph || !taskId) {
+    return false;
+  }
+  const bbox = flowGraphContentBBox(host);
+  if (bbox && host._flowViewState) {
+    host._flowViewState.contentBbox = bbox;
+  }
+  return focusFlowGraphCenterOnNode(
+    host,
+    taskId,
+    graph,
+    viewState,
+    FLOW_RESET_START_NODE_WIDTH_FRACTION,
+  );
+}
+
+function applyFlowGraphTaskSelection(host, graph, detailHost, entry, viewState) {
+  const taskId = host.dataset.selectedTaskId;
+  if (!taskId) {
+    return;
+  }
+  selectFlowNode(host, graph, detailHost, entry, taskId);
+  const pending = viewState?.pendingCenterTaskId;
+  if (pending && String(pending) === String(taskId)) {
+    viewState.pendingCenterTaskId = null;
+    centerFlowGraphOnTask(host, graph, taskId, viewState);
+  }
+}
+
 function alignFlowGraphViewTop(host, viewState = null) {
   const state = host._flowViewState;
   if (!state?.contentBbox) {
@@ -1266,57 +1454,7 @@ function alignFlowGraphViewTop(host, viewState = null) {
   syncFlowViewState(host, viewState);
 }
 
-function focusFlowGraphOnStartTask(host, graph, viewState = null) {
-  const stageSize = flowGraphStageSize(host);
-  const state = host._flowViewState;
-  if (!stageSize || !state?.contentBbox || !graph) {
-    return;
-  }
-  const startTaskId = resolveFlowGraphStartTaskId(graph);
-  const nodeBounds = startTaskId ? flowGraphNodeBounds(host, startTaskId, graph, viewState) : null;
-  if (!startTaskId || !nodeBounds?.width || !nodeBounds?.height) {
-    fitFlowGraphToView(host, viewState);
-    alignFlowGraphViewTop(host, viewState);
-    return;
-  }
-
-  const stageAspect = stageSize.width / stageSize.height;
-  const viewWidth = Math.max(
-    nodeBounds.width / FLOW_START_TASK_VIEWPORT_FRACTION,
-    FLOW_GRAPH_MIN_VIEW_SIZE,
-  );
-  const viewHeight = viewWidth / stageAspect;
-  const centerX = nodeBounds.x + nodeBounds.width / 2;
-  const centerY = nodeBounds.y + nodeBounds.height / 2;
-  state.vx = centerX - viewWidth / 2;
-  state.vy = centerY - viewHeight / 2;
-  state.vw = viewWidth;
-  state.vh = viewHeight;
-  applyFlowGraphViewBox(host);
-  syncFlowViewState(host, viewState);
-}
-
-function initFlowGraphReadableView(host, viewState = null) {
-  const stageSize = flowGraphStageSize(host);
-  const state = host._flowViewState;
-  if (!stageSize || !state?.contentBbox) {
-    return;
-  }
-  const bounds = flowGraphContentBounds(state);
-  state.vw = stageSize.width;
-  state.vh = stageSize.height;
-  state.vx = bounds.x;
-  state.vy = bounds.y;
-  applyFlowGraphViewBox(host);
-  syncFlowViewState(host, viewState);
-}
-
-function fitFlowGraphToView(host, viewState = null) {
-  const stageSize = flowGraphStageSize(host);
-  const state = host._flowViewState;
-  if (!stageSize?.width || !stageSize?.height || !state?.contentBbox) {
-    return;
-  }
+function flowGraphStageViewSize(state, stageSize) {
   const bounds = flowGraphContentBounds(state);
   const contentAspect = bounds.width / bounds.height;
   const stageAspect = stageSize.width / stageSize.height;
@@ -1327,6 +1465,22 @@ function fitFlowGraphToView(host, viewState = null) {
   } else {
     viewWidth = bounds.height * stageAspect;
   }
+  return { viewWidth, viewHeight };
+}
+
+function initFlowGraphReadableView(host, viewState = null) {
+  fitFlowGraphToView(host, viewState);
+  alignFlowGraphViewTop(host, viewState);
+}
+
+function fitFlowGraphToView(host, viewState = null) {
+  const stageSize = flowGraphStageSize(host);
+  const state = host._flowViewState;
+  if (!stageSize?.width || !stageSize?.height || !state?.contentBbox) {
+    return;
+  }
+  const bounds = flowGraphContentBounds(state);
+  const { viewWidth, viewHeight } = flowGraphStageViewSize(state, stageSize);
   state.vx = bounds.x - (viewWidth - bounds.width) / 2;
   state.vy = bounds.y - (viewHeight - bounds.height) / 2;
   state.vw = viewWidth;
@@ -1335,7 +1489,11 @@ function fitFlowGraphToView(host, viewState = null) {
   syncFlowViewState(host, viewState);
 }
 
-function resetFlowGraphView(host, viewState = null) {
+function resetFlowGraphView(host, viewState = null, graph = null) {
+  const startTaskId = graph ? resolveFlowGraphStartTaskId(graph) : null;
+  if (startTaskId && centerFlowGraphOnTask(host, graph, startTaskId, viewState)) {
+    return;
+  }
   initFlowGraphReadableView(host, viewState);
 }
 
@@ -1371,11 +1529,14 @@ function setupFlowGraphViewport(host, viewState = null, graph = null) {
   host._flowViewState = host._flowViewState || {};
   host._flowViewState.contentBbox = bbox;
 
-  if (viewState?.focusStartTask && graph) {
+  const keepCurrentView = Boolean(host.dataset.selectedTaskId);
+
+  if (viewState?.focusStartTask && !keepCurrentView) {
     viewState.focusStartTask = false;
-    focusFlowGraphOnStartTask(host, graph, viewState);
+    initFlowGraphReadableView(host, viewState);
     return;
   }
+  viewState.focusStartTask = false;
 
   const saved = viewState?.viewBox;
   if (saved?.width && saved?.height) {
@@ -1387,7 +1548,6 @@ function setupFlowGraphViewport(host, viewState = null, graph = null) {
     syncFlowViewState(host, viewState);
     return;
   }
-
   initFlowGraphReadableView(host, viewState);
 }
 
@@ -1504,7 +1664,7 @@ function buildFlowGraphShellHtml(renderId, viewState) {
     `<button type="button" class="flow-graph-zoom-out" title="Zoom out">−</button>` +
     `<button type="button" class="flow-graph-zoom-in" title="Zoom in">+</button>` +
     `<button type="button" class="flow-graph-fit">Fit</button>` +
-    `<button type="button" class="flow-graph-reset" title="Reset to readable zoom at flow start">Reset</button>` +
+    `<button type="button" class="flow-graph-reset" title="Center on START task (~15% of view width)">Reset</button>` +
     `</div>` +
     `<div class="flow-graph-stage" style="height:${stageHeight}px"><pre class="mermaid" id="${escapeHtml(renderId)}"></pre></div>` +
     `</div>`
@@ -1523,10 +1683,14 @@ function updateFlowGraphMeta(metaHost, entry, graph, viewState) {
     `${entry.playbook_name}: ${graph.nodes.length} task(s), ${graph.edges.length} transition(s)` +
     (hiddenCount ? ` · ${hiddenCount} unreachable hidden` : " · unreachable dimmed") +
     ` · ${placement}` +
-    " · drag to pan, scroll to zoom · Reset = readable · Fit = full flow";
+    " · drag to pan, scroll to zoom · Reset = START centered · Fit = full flow";
 }
 
-function bindFlowGraphToolbar(host, entry, viewState, rerender) {
+function currentFlowGraphEntry(viewState) {
+  return viewState.flowGraphs?.[viewState.index] || null;
+}
+
+function bindFlowGraphToolbar(host, viewState) {
   const jumpInput = host.querySelector(".flow-graph-jump-input");
   if (jumpInput && host.dataset.selectedTaskId) {
     jumpInput.value = host.dataset.selectedTaskId;
@@ -1541,6 +1705,8 @@ function bindFlowGraphToolbar(host, entry, viewState, rerender) {
   syncFlowGraphLayoutControls(host, viewState);
   applyFlowGraphStageHeight(host, viewState);
 
+  const rerender = () => viewState.rerenderFlowGraph?.();
+
   if (host.dataset.toolbarBound) {
     return;
   }
@@ -1552,7 +1718,9 @@ function bindFlowGraphToolbar(host, entry, viewState, rerender) {
       return;
     }
     if (event.target.closest(".flow-graph-reset")) {
-      resetFlowGraphView(host, viewState);
+      const entry = currentFlowGraphEntry(viewState);
+      const graph = entry ? filterFlowGraph(entry.graph, viewState) : null;
+      resetFlowGraphView(host, viewState, graph);
       return;
     }
     if (event.target.closest(".flow-graph-zoom-in")) {
@@ -1588,7 +1756,9 @@ function bindFlowGraphToolbar(host, entry, viewState, rerender) {
     }
     const taskId = jumpInput.value.trim();
     const detailHost = document.getElementById(`flow-graph-detail-${host.dataset.panelKey}`);
-    if (!selectFlowNode(host, filterFlowGraph(entry.graph, viewState), detailHost, entry, taskId)) {
+    const entry = currentFlowGraphEntry(viewState);
+    const jumpGraph = filterFlowGraph(entry.graph, viewState);
+    if (!entry || !selectFlowNode(host, jumpGraph, detailHost, entry, taskId, { centerView: true })) {
       jumpInput.classList.add("flow-graph-jump-error");
       window.setTimeout(() => jumpInput.classList.remove("flow-graph-jump-error"), 600);
     }
@@ -1646,9 +1816,7 @@ async function renderFlowGraph(hostId, entry, metaHostId, detailHostId, viewStat
   updateFlowGraphMeta(metaHost, entry, graph, viewState);
   const renderId = `${hostId}-mermaid`;
   host.innerHTML = buildFlowGraphShellHtml(renderId, viewState);
-  bindFlowGraphToolbar(host, entry, viewState, () => {
-    void renderFlowGraph(hostId, entry, metaHostId, detailHostId, viewState);
-  });
+  bindFlowGraphToolbar(host, viewState);
 
   const useSavedView = flowGraphUsesSavedView(viewState) && graphHasSavedViewPositions(graph);
   try {
@@ -1656,9 +1824,7 @@ async function renderFlowGraph(hostId, entry, metaHostId, detailHostId, viewStat
       finalizeFlowGraphSvg(host);
       setupFlowGraphViewport(host, viewState, graph);
       bindFlowGraphNodeClicks(host, graph, detailHost, entry, host.closest("details.analysis-panel"));
-      if (host.dataset.selectedTaskId) {
-        selectFlowNode(host, graph, detailHost, entry, host.dataset.selectedTaskId);
-      }
+      applyFlowGraphTaskSelection(host, graph, detailHost, entry, viewState);
       return;
     }
 
@@ -1677,9 +1843,7 @@ async function renderFlowGraph(hostId, entry, metaHostId, detailHostId, viewStat
     finalizeFlowGraphSvg(host);
     setupFlowGraphViewport(host, viewState, graph);
     bindFlowGraphNodeClicks(host, graph, detailHost, entry, host.closest("details.analysis-panel"));
-    if (host.dataset.selectedTaskId) {
-      selectFlowNode(host, graph, detailHost, entry, host.dataset.selectedTaskId);
-    }
+    applyFlowGraphTaskSelection(host, graph, detailHost, entry, viewState);
   } catch (err) {
     host.innerHTML = `<p class="meta">Could not render flow diagram: ${escapeHtml(err.message || String(err))}</p>`;
   }
@@ -1709,20 +1873,32 @@ function bindFlowGraphNav(details, data, panelKey) {
     focusStartTask: true,
     stageHeightPct: FLOW_GRAPH_DEFAULT_STAGE_HEIGHT_PCT,
     index: 0,
+    flowGraphs,
+    hostId,
+    metaHostId,
+    detailHostId,
   };
   details._flowGraphViewState = viewState;
 
-  flowGraphs.forEach((entry) => {
-    entry._allFlowGraphs = flowGraphs;
-  });
+  viewState.rerenderFlowGraph = () => {
+    const activeEntry = flowGraphs[viewState.index];
+    if (!activeEntry) {
+      return;
+    }
+    void renderFlowGraph(hostId, activeEntry, metaHostId, detailHostId, viewState);
+  };
 
-  const showGraph = (index) => {
+  const showGraph = (index, options = {}) => {
     const entry = flowGraphs[index];
     if (!entry) {
       return;
     }
     viewState.index = index;
-    requestFlowGraphStartFocus(viewState);
+    if (options.focusTaskId) {
+      viewState.focusStartTask = false;
+    } else {
+      requestFlowGraphStartFocus(viewState);
+    }
     nav.querySelectorAll(".flow-graph-tab").forEach((button, buttonIndex) => {
       const active = buttonIndex === index;
       button.classList.toggle("active", active);
@@ -1746,16 +1922,28 @@ function bindFlowGraphNav(details, data, panelKey) {
   });
 
   details._flowGraphShow = showGraph;
-  details._selectFlowTask = (taskId, flowIndex = null) => {
-    if (flowIndex != null) {
-      showGraph(flowIndex);
+  details._selectFlowTask = (taskId, flowIndex = null, options = {}) => {
+    const tid = taskId ? String(taskId) : null;
+    if (!tid) {
+      return;
     }
+    const centerView = options.centerView !== false;
     const host = document.getElementById(hostId);
+    if (host) {
+      host.dataset.selectedTaskId = tid;
+    }
+    const needsSwitch = flowIndex != null && flowIndex !== viewState.index;
+    if (needsSwitch) {
+      viewState.pendingCenterTaskId = centerView ? tid : null;
+      showGraph(flowIndex, { focusTaskId: tid });
+      return;
+    }
+    viewState.pendingCenterTaskId = null;
     const entry = flowGraphs[viewState.index];
     const graph = filterFlowGraph(entry?.graph, viewState);
     const detailHost = document.getElementById(detailHostId);
-    if (host && graph && taskId) {
-      selectFlowNode(host, graph, detailHost, entry, String(taskId));
+    if (host && graph) {
+      selectFlowNode(host, graph, detailHost, entry, tid, { centerView });
     }
   };
 
@@ -1855,12 +2043,12 @@ function formatTaskSummaryList(values) {
   return values.join(", ");
 }
 
-function taskSummaryRowToCells(row) {
+function taskSummaryRowToCells(row, playbookMaps) {
   return [
     row.task_type,
     row.label || "—",
     formatTaskSummaryList(row.scripts),
-    formatTaskSummaryList(row.playbooks),
+    { html: formatPlaybookReferenceList(row.playbooks, playbookMaps) },
     formatTaskSummaryList(row.commands),
     row.count,
   ];
@@ -1868,9 +2056,11 @@ function taskSummaryRowToCells(row) {
 
 function buildTaskSummarySectionHtml(data, panelKey) {
   const summaryHeaders = ["Task type", "Label", "Scripts", "Playbooks", "Commands", "Count"];
-  const reachableRows = (data.task_summary_reachable || []).map(taskSummaryRowToCells);
-  const unreachableRows = (data.task_summary_unreachable || []).map(taskSummaryRowToCells);
-  const allRows = (data.task_summary || []).map(taskSummaryRowToCells);
+  const playbookMaps = buildPlaybookNameMaps(data);
+  const toCells = (row) => taskSummaryRowToCells(row, playbookMaps);
+  const reachableRows = (data.task_summary_reachable || []).map(toCells);
+  const unreachableRows = (data.task_summary_unreachable || []).map(toCells);
+  const allRows = (data.task_summary || []).map(toCells);
   return (
     `<section id="section-tasks-${escapeHtml(panelKey)}" class="analysis-section analysis-section-full">` +
     `<h3>Task summary ${analysisHelpButton(
@@ -2006,27 +2196,36 @@ function buildAnalysisBodyHtml(data, panelKey) {
           <button type="button" class="secondary refactor-load-preset-btn">Load config</button>
         </div>
         <div class="refactor-ops-list"></div>
-        <div class="refactor-toolbar">
-          <label>
-            Add operation
-            <select class="refactor-add-type">
-              <option value="leaf">Leaf extract</option>
-              <option value="cluster">Cluster extract</option>
-              <option value="error">Error handling (post-refactor)</option>
-            </select>
-          </label>
-          <button type="button" class="secondary refactor-add-btn">Add</button>
+        <div class="refactor-add-op-bar" role="group" aria-label="Add refactor operation">
+          <span class="refactor-add-op-label">Add operation</span>
+          <select class="refactor-add-type" aria-label="Operation type">
+            <option value="leaf">Leaf extract</option>
+            <option value="cluster">Cluster extract</option>
+            <option value="error">Error handling (post-refactor)</option>
+          </select>
+          <button type="button" class="action refactor-add-btn">Add</button>
         </div>
         <label class="refactor-parent-copy">
           Parent copy name (optional)
           <input type="text" class="refactor-parent-copy-name" placeholder="Auto [REFACTOR-M] name" />
         </label>
-        <label class="refactor-toggle" title="Experimental: upload/compare sub-playbooks in parallel within one extract-multi run">
-          <input type="checkbox" class="refactor-parallel-checkbox" />
-          Parallel extract-multi ${analysisHelpButton(
-            "Runs sub-playbook upload and compare steps concurrently within this playbook refactor (experimental).",
-          )}
-        </label>
+        <p class="meta refactor-run-phases">
+          <strong>Phase 1 (default):</strong> upload sub-playbooks in parallel → (2) refresh cache → (3) upload main playbook copy →
+          (4) refresh cache → (5) diff subs and report issues. Playbook Tools cache refreshes again when the job finishes.
+        </p>
+        <details class="refactor-advanced">
+          <summary>Advanced upload options</summary>
+          <label class="refactor-toggle checkbox" title="Replace sub-playbooks and parent copy when names already exist on the tenant (requires confirmation)">
+            <input type="checkbox" class="refactor-overwrite-checkbox" checked="checked" />
+            Overwrite existing target playbooks when names match
+          </label>
+          <label class="refactor-toggle checkbox" title="Upload sub-playbooks one at a time (legacy)">
+            <input type="checkbox" class="refactor-sequential-checkbox" />
+            Use sequential sub-playbook uploads (phase 1) ${analysisHelpButton(
+              "Default is parallel phase-1 uploads. Enable this only for troubleshooting or tenant rate limits.",
+            )}
+          </label>
+        </details>
         <div class="refactor-actions">
           <button type="button" class="action refactor-preview-btn">Preview refactor</button>
           <button type="button" class="primary refactor-run-btn">Run refactor</button>
@@ -2149,6 +2348,9 @@ function createAnalysisPanel(data) {
   bindFlowGraphNav(details, data, panelKey);
   bindStructureTreeNavigation(details);
   bindPlaybookTaskListingLinks(details, panelKey);
+  if (typeof hydrateAnalysisTables === "function") {
+    hydrateAnalysisTables(details);
+  }
 
   details.querySelector(".analysis-copy-preview-btn")?.addEventListener("click", () => {
     void previewCopyPlanForPanel(details, data);
@@ -2189,21 +2391,82 @@ async function analyzeSelectedPlaybook() {
   const profile = document.getElementById("active-profile").value;
   const playbookId = selected[0].id;
   try {
-    const data = await withLoader(
-      () => api(`/api/playbooks/${encodeURIComponent(playbookId)}/analysis?profile=${encodeURIComponent(profile)}`),
-      "Analyzing playbook…",
-    );
-    createAnalysisPanel(data);
+    const cacheChoice = await promptStaleCacheChoice([{ profile, scopes: ["playbooks", "scripts"] }], {
+      deferRefresh: true,
+    });
+    if (cacheChoice === "cancel") {
+      return;
+    }
+    const needsRefresh = cacheChoice?.action === "refresh";
+    const loaderMessage = needsRefresh
+      ? "Refreshing caches and analyzing playbook…"
+      : "Analyzing playbook…";
+
+    let fetchPlan = null;
+    try {
+      fetchPlan = await api(
+        `/api/playbooks/${encodeURIComponent(playbookId)}/analysis/fetch-plan?profile=${encodeURIComponent(profile)}`,
+      );
+      if (typeof notifyAnalysisFetchPlan === "function") {
+        notifyAnalysisFetchPlan(fetchPlan);
+      }
+    } catch (planErr) {
+      console.warn("Could not load analysis fetch plan:", planErr);
+    }
+
+    await withLoader(async () => {
+      if (needsRefresh) {
+        if (cacheChoice.refreshByProfile && typeof runStaleCacheRefreshWithProgress === "function") {
+          await runStaleCacheRefreshWithProgress(cacheChoice.refreshByProfile, playbookAnalysisProgress);
+        } else {
+          await cacheChoice.runRefresh();
+        }
+      }
+      let data;
+      if (typeof runPlaybookAnalysisJob === "function") {
+        data = await runPlaybookAnalysisJob(profile, playbookId, playbookAnalysisProgress, {
+          cacheOnly: true,
+          startMessage: "Analyzing playbook…",
+        });
+      } else {
+        const query = new URLSearchParams({
+          profile,
+          cache_only: "true",
+          skip_cache_refresh: "true",
+        });
+        data = await api(`/api/playbooks/${encodeURIComponent(playbookId)}/analysis?${query.toString()}`);
+      }
+      createAnalysisPanel(data);
+      if (typeof runPlaybookAnalysisJob !== "function" && typeof notifyAnalysisFetchSummary === "function") {
+        notifyAnalysisFetchSummary(data?.fetch_summary);
+      }
+      window.cptkWs?.showToast?.({
+        level: "success",
+        title: "Analysis complete",
+        message: data?.root_playbook?.name || "Playbook analysis finished.",
+        autoDismissMs: 4500,
+      });
+    }, loaderMessage);
   } catch (err) {
+    playbookAnalysisProgress?.clear?.();
     alert(`Analysis failed: ${err.message}`);
   }
+}
+
+function formatPlanItemLine(item, idKey, { indent = "  " } = {}) {
+  const name = item.name || item[idKey] || "?";
+  const action = item.action || "?";
+  const role = item.role ? ` · ${item.role}` : "";
+  const targetId = item.target_id ? ` → target id ${item.target_id}` : "";
+  const blocked = item.blocked ? " · BLOCKED (unresolved sub-playbook refs)" : "";
+  return `${indent}· ${name}${role} [${action}]${targetId}${blocked}`;
 }
 
 function formatActionList(items, idKey, emptyLabel) {
   if (!items?.length) {
     return [emptyLabel];
   }
-  return items.map((item) => `  · ${item.name || item[idKey] || "?"} [${item.action}]`);
+  return items.map((item) => formatPlanItemLine(item, idKey));
 }
 
 function formatIntegrationCommands(commands, maxRows = 12) {
@@ -2217,44 +2480,131 @@ function formatIntegrationCommands(commands, maxRows = 12) {
   return lines;
 }
 
+function formatDeepCopyBindingSection(plan, analysisData) {
+  const lines = [];
+  const hints = analysisData ? collectBindingHintsFromAnalysis(analysisData) : [];
+  const unresolvedScripts = plan.unresolved_scripts || [];
+  const missingSubs = plan.missing_sub_playbooks || [];
+
+  lines.push(
+    "During upload, playbook YAML is rewritten so sub-playbook and automation script references",
+    "bind to target tenant IDs. Script IDs are remapped after Phase 1; sub-playbook IDs after each playbook wave.",
+  );
+
+  if (hints.length) {
+    lines.push("", "UUID-only references in the flow graph (resolved from source cache when saving):");
+    hints.slice(0, 16).forEach((hint) => {
+      lines.push(
+        `  · ${hint.kind} — ${hint.playbook} task #${hint.taskId} (${hint.taskLabel || "task"}): ${hint.binding}`,
+      );
+    });
+    if (hints.length > 16) {
+      lines.push(`  … and ${hints.length - 16} more`);
+    }
+  } else {
+    lines.push("", "Flow graph: no UUID-only playbook/script bindings detected in analysis.");
+  }
+
+  if (unresolvedScripts.length) {
+    lines.push("", "Scripts referenced in tasks but not in target script index (may need manual copy):");
+    unresolvedScripts.slice(0, 12).forEach((row) => {
+      lines.push(`  · ${row.name || row.script_id || "?"} (used in: ${(row.playbooks || []).join(", ") || "?"})`);
+    });
+    if (unresolvedScripts.length > 12) {
+      lines.push(`  … and ${unresolvedScripts.length - 12} more`);
+    }
+  }
+
+  if (missingSubs.length) {
+    lines.push("", "Missing sub-playbooks on source (copy cannot proceed):");
+    missingSubs.forEach((item) => lines.push(`  · ${item.lookup_key}`));
+  }
+
+  return lines;
+}
+
 function formatComponentsPlanSummary(plan, analysisData) {
   const integrationCommands =
     plan.integration_commands_used ||
     analysisData?.integration_commands_used ||
     analysisData?.commands_used ||
     [];
+  const scriptCounts = plan.scripts?.counts || {};
+  const playbookCounts = plan.playbooks?.counts || {};
+  const execution = plan.execution_plan || {};
   const lines = [
-    `Copy playbook components from ${plan.source_profile} to ${plan.target_profile}?`,
+    "DEEP PLAYBOOK COPY PLAN",
+    "(Preview only — nothing is copied until you confirm.)",
     "",
-    `Root playbook: ${plan.root_playbook_name}`,
+    "Route",
+    `  Source tenant: ${plan.source_profile}`,
+    `  Target tenant: ${plan.target_profile}`,
+    `  Root playbook: ${plan.root_playbook_name}${plan.root_playbook_id ? ` (${plan.root_playbook_id})` : ""}`,
     "",
-    "WILL BE COPIED",
-    "Playbooks (sub-playbooks first, then root):",
-    ...formatActionList(plan.playbooks?.items, "playbook_id", "  (none)"),
+    "Options",
+    `  Overwrite when name exists on target: ${plan.overwrite ? "yes" : "no"}`,
+    `  Stop on name conflict: ${plan.stop_on_conflict ? "yes" : "no"}`,
     "",
-    "Automation scripts (custom scripts uploaded as YAML):",
-    ...formatActionList(plan.scripts?.items, "script_id", "  (none)"),
+    "Planned actions (by asset)",
+    `  Scripts — copy ${scriptCounts.copy || 0}, update ${scriptCounts.update || 0}, skip ${scriptCounts.skip || 0}, conflict ${scriptCounts.conflict || 0}`,
+    `  Playbooks — copy ${playbookCounts.copy || 0}, update ${playbookCounts.update || 0}, skip ${playbookCounts.skip || 0}, conflict ${playbookCounts.conflict || 0}`,
     "",
-    "WILL NOT BE COPIED",
-    "Integration commands (Brand|||command — tenant must provide these):",
-    ...formatIntegrationCommands(integrationCommands),
+    "EXECUTION SEQUENCE (on confirm)",
     "",
-    "The target tenant must have the same integrations configured.",
-    "Only custom automation scripts are copied; built-in integration commands are not.",
+    "Phase 1 — Automation scripts",
+    "  Upload all scripts marked copy/update in parallel on the target.",
   ];
+
+  const scriptItems = (execution.script_phase?.items || plan.scripts?.items || []).filter((item) =>
+    ["copy", "update", "skip", "conflict", "blocked_non_copyable"].includes(item.action),
+  );
+  if (!scriptItems.length) {
+    lines.push("  (none in scope)");
+  } else {
+    lines.push(...formatActionList(scriptItems, "script_id", "  (none)"));
+  }
+  const scriptRefresh = execution.script_phase?.cache_refresh_after;
+  lines.push(
+    `  → Refresh scripts cache on ${scriptRefresh?.profile || plan.target_profile} (resolve script IDs for playbook binding)`,
+    "",
+    "Phase 2 — Playbooks",
+    "  Upload in dependency waves (parallel within each wave). Skipped playbooks are registered on the target first.",
+  );
+
+  const skipped = execution.playbook_skipped || (plan.playbooks?.items || []).filter((item) => item.action === "skip");
+  if (skipped.length) {
+    lines.push("  Already on target (skip upload, use for binding):");
+    skipped.forEach((item) => lines.push(formatPlanItemLine(item, "playbook_id", { indent: "    " })));
+  }
+
+  const waves = execution.playbook_waves || [];
+  if (waves.length) {
+    waves.forEach((wave, index) => {
+      lines.push(`  Wave ${index + 1} — parallel upload:`);
+      wave.forEach((entry) => lines.push(formatPlanItemLine(entry, "playbook_id", { indent: "    " })));
+      const isLast = index === waves.length - 1;
+      if (!isLast || wave.some((entry) => !entry.blocked)) {
+        lines.push(
+          `    → Refresh playbooks cache on ${plan.target_profile} (resolve sub-playbook IDs for the next wave)`,
+        );
+      }
+    });
+  } else {
+    lines.push("  (no playbook uploads — all skipped or none in scope)");
+  }
+
+  lines.push(`  → Final refresh playbooks cache on ${plan.target_profile}`, "", "BINDINGS & RESOLUTION", ...formatDeepCopyBindingSection(plan, analysisData), "", "NOT COPIED WITH THIS WORKFLOW", "Integration commands (tenant must already provide integrations):", ...formatIntegrationCommands(integrationCommands), "", "Only custom automation scripts are uploaded; integration commands are not copied.");
+
   if (plan.warnings?.length) {
-    lines.push("", "Warnings:", ...plan.warnings.map((w) => `  - ${w}`));
+    lines.push("", "Warnings:");
+    plan.warnings.forEach((warning) => lines.push(`  · ${warning}`));
   }
-  if (plan.missing_sub_playbooks?.length) {
-    lines.push("", "Missing sub-playbooks (copy will abort):");
-    plan.missing_sub_playbooks.forEach((item) => lines.push(`  - ${item.lookup_key}`));
-  }
+
   lines.push(
     "",
-    `Summary — scripts: copy ${plan.scripts.counts.copy}, update ${plan.scripts.counts.update}, skip ${plan.scripts.counts.skip}`,
-    `Summary — playbooks: copy ${plan.playbooks.counts.copy}, update ${plan.playbooks.counts.update}, skip ${plan.playbooks.counts.skip}`,
-    "",
-    plan.would_abort ? "No action will be taken (conflict)." : "Proceed with copy?",
+    plan.would_abort
+      ? "RESULT: Plan would abort — no copy will run until conflicts or missing subs are resolved."
+      : "RESULT: Ready to run the sequence above on the target tenant.",
   );
   return lines.join("\n");
 }
@@ -2277,6 +2627,13 @@ async function copyPlaybookComponentsForPanel(details, data) {
   const resultEl = details.querySelector(".analysis-copy-components-result");
 
   try {
+    const cacheChoice = await promptStaleCacheChoice([
+      { profile: source, scopes: ["playbooks", "scripts"] },
+      { profile: target, scopes: ["playbooks", "scripts"] },
+    ]);
+    if (cacheChoice === "cancel") {
+      return;
+    }
     const plan = await withLoader(
       () =>
         api("/api/playbooks/copy-components/preview", {
@@ -2294,23 +2651,40 @@ async function copyPlaybookComponentsForPanel(details, data) {
     const proceedCopy =
       typeof showConfirmDialog === "function"
         ? await showConfirmDialog({
-            title: "Confirm deep copy",
+            title: "Deep copy plan",
             message: formatComponentsPlanSummary(plan, data),
-            proceedLabel: "Copy components",
+            proceedLabel: "Run copy",
           })
         : window.confirm(formatComponentsPlanSummary(plan, data));
     if (!proceedCopy) {
       return;
     }
 
-    const copyResult = await withLoader(
-      () =>
-        api("/api/playbooks/copy-components", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        }),
-      "Copying playbook components…",
-    );
+    let copyResult;
+    if (window.cptkOpProgress?.runCopy) {
+      copyResult = await window.cptkOpProgress.runCopy({
+        startMessage: `Deep playbook copy ${source} → ${target}…`,
+        wsAction: "playbooks.copy_components",
+        payload,
+        httpCall: () =>
+          api("/api/playbooks/copy-components", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }),
+        loaderMessage: "Copying playbook components…",
+        busyButton: details.querySelector(".analysis-copy-components-btn"),
+        busyLabel: "Copying…",
+      });
+    } else {
+      copyResult = await withLoader(
+        () =>
+          api("/api/playbooks/copy-components", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }),
+        "Copying playbook components…",
+      );
+    }
     resultEl.textContent = JSON.stringify(copyResult, null, 2);
     resultEl.classList.remove("hidden");
     renderCopyResultSummary(details.querySelector(".analysis-copy-result-summary"), copyResult);
@@ -2713,7 +3087,11 @@ function renderErrorHandlingMatchPreview(row, analysisData, matches, matchState,
     renderAnalysisTableHtml(
       ["Location", "Task #", "Title", "Script", "Reachable", "Current retry", "On error", "Error path"],
       rows,
+      { height: "320px" },
     );
+  if (typeof hydrateAnalysisTables === "function") {
+    hydrateAnalysisTables(host);
+  }
   host.classList.remove("hidden");
 }
 
@@ -2861,7 +3239,8 @@ function refactorOpRowHtml(type, value = "", analysisData = null) {
       const enriched = catalogWithExtraTask(catalog, selected);
       field =
         `<div class="refactor-op-body">` +
-        `<label class="refactor-op-task-label">Task ${leafHelp}` +
+        `<label class="refactor-op-task-label">` +
+        `<span class="refactor-op-label-line"><span>Task</span>${leafHelp}</span>` +
         `${buildRefactorTaskSelectHtml(enriched, selected, "refactor-leaf-task", "— select task —")}</label>` +
         `<button type="button" class="secondary refactor-check-validity-btn">Check validity</button>` +
         `<div class="refactor-op-validation meta hidden" aria-live="polite"></div>` +
@@ -2869,7 +3248,8 @@ function refactorOpRowHtml(type, value = "", analysisData = null) {
     } else {
       field =
         `<div class="refactor-op-body">` +
-        `<label>Task id ${analysisHelpButton("Numeric task id from the root playbook.")}` +
+        `<label class="refactor-op-task-label">` +
+        `<span class="refactor-op-label-line"><span>Task id</span>${analysisHelpButton("Numeric task id from the root playbook.")}</span>` +
         `<input type="text" class="refactor-op-value refactor-leaf-task" placeholder="e.g. 366" value="${escapeHtml(value)}" /></label>` +
         `<button type="button" class="secondary refactor-check-validity-btn">Check validity</button>` +
         `<div class="refactor-op-validation meta hidden" aria-live="polite"></div>` +
@@ -2882,9 +3262,11 @@ function refactorOpRowHtml(type, value = "", analysisData = null) {
       field =
         `<div class="refactor-op-body">` +
         `<div class="refactor-cluster-fields">` +
-        `<label>Start ${clusterStartHelp}` +
+        `<label class="refactor-op-task-label">` +
+        `<span class="refactor-op-label-line"><span>Start</span>${clusterStartHelp}</span>` +
         `${buildRefactorTaskSelectHtml(enriched, start, "refactor-cluster-start", "— start —")}</label>` +
-        `<label>End ${clusterEndHelp}` +
+        `<label class="refactor-op-task-label">` +
+        `<span class="refactor-op-label-line"><span>End</span>${clusterEndHelp}</span>` +
         `${buildRefactorTaskSelectHtml(enriched, end, "refactor-cluster-end", "— end —")}</label>` +
         `</div>` +
         `<button type="button" class="secondary refactor-check-validity-btn">Check validity</button>` +
@@ -2893,7 +3275,8 @@ function refactorOpRowHtml(type, value = "", analysisData = null) {
     } else {
       field =
         `<div class="refactor-op-body">` +
-        `<label>Cluster START:END ${analysisHelpButton("Inclusive task id range (e.g. 21:52).")}` +
+        `<label class="refactor-op-task-label">` +
+        `<span class="refactor-op-label-line"><span>Cluster START:END</span>${analysisHelpButton("Inclusive task id range (e.g. 21:52).")}</span>` +
         `<input type="text" class="refactor-op-value refactor-cluster-spec" placeholder="e.g. 21:52" value="${escapeHtml(value)}" /></label>` +
         `<button type="button" class="secondary refactor-check-validity-btn">Check validity</button>` +
         `<div class="refactor-op-validation meta hidden" aria-live="polite"></div>` +
@@ -3023,7 +3406,7 @@ function refactorPayloadFromPanel(details, data) {
   const panel = details.querySelector(".refactor-panel");
   const ops = collectRefactorOperations(panel);
   const parentCopyName = panel?.querySelector(".refactor-parent-copy-name")?.value.trim() || undefined;
-  const parallel = panel?.querySelector(".refactor-parallel-checkbox")?.checked === true;
+  const sequential = panel?.querySelector(".refactor-sequential-checkbox")?.checked === true;
   const payload = {
     profile: data.profile,
     playbook_id: data.root_playbook.id,
@@ -3032,13 +3415,27 @@ function refactorPayloadFromPanel(details, data) {
     post_task_updates: ops.post_task_updates,
     parent_copy_name: parentCopyName || undefined,
   };
-  if (parallel) {
-    payload.refactor_mode = "parallel";
+  if (sequential) {
+    payload.refactor_mode = "sequential";
   }
+  const overwriteEl = panel?.querySelector(".refactor-overwrite-checkbox");
+  payload.overwrite_existing = overwriteEl ? overwriteEl.checked !== false : true;
   return payload;
 }
 
-function formatRefactorPreview(plan) {
+function formatRefactorExistingTargets(targets) {
+  if (!Array.isArray(targets) || !targets.length) {
+    return "";
+  }
+  const lines = targets.map((row) => {
+    const role = row.role === "parent_copy" ? "parent copy" : "sub-playbook";
+    const id = row.playbook_id ? ` [${row.playbook_id}]` : "";
+    return `  · ${role}: ${row.name}${id}`;
+  });
+  return ["Existing tenant playbooks with matching names:", ...lines].join("\n");
+}
+
+function formatRefactorPreview(plan, options = {}) {
   const lines = [
     `Refactor preflight for ${plan.source_playbook?.name || plan.source_playbook?.id || "playbook"}`,
     plan.ok ? "Status: OK" : "Status: FAILED",
@@ -3047,6 +3444,17 @@ function formatRefactorPreview(plan) {
     lines.push("", "Issues:", ...plan.reasons.map((item) => `  - ${item}`));
   }
   lines.push("", `Parent copy: ${plan.parent_copy_name || "—"}`);
+  const existing = formatRefactorExistingTargets(plan.existing_targets);
+  if (existing) {
+    lines.push("", existing);
+    const overwriteOn = options.overwriteExisting !== false;
+    lines.push(
+      "",
+      overwriteOn
+        ? "Overwrite is enabled: run will replace these playbooks in place (you must confirm before upload)."
+        : "Overwrite is off: upload will reuse existing same-name playbooks without replacing their content (compare may fail).",
+    );
+  }
   if (plan.extractions?.length) {
     lines.push("", "Planned extractions:");
     plan.extractions.forEach((row) => {
@@ -3064,14 +3472,30 @@ function formatRefactorPreview(plan) {
   return lines.join("\n");
 }
 
+function showRefactorDialog({ title, message, success = true }) {
+  if (typeof showOutcomeDialog === "function") {
+    showOutcomeDialog({ title, message, success });
+    return;
+  }
+  window.alert(message);
+}
+
 function ensureRefactorPanelValid(panel) {
   const validationErrors = validateRefactorOperations(panel);
   if (validationErrors.length) {
-    alert(`Fix refactor operations before continuing:\n\n${validationErrors.join("\n")}`);
+    showRefactorDialog({
+      title: "Fix refactor operations",
+      message: validationErrors.join("\n"),
+      success: false,
+    });
     return false;
   }
   if (panel?.querySelector('.refactor-op-row[data-op-type="error"].refactor-op-invalid')) {
-    alert("Fix invalid error-handling operations (highlighted in red) before continuing.");
+    showRefactorDialog({
+      title: "Fix refactor operations",
+      message: "Fix invalid error-handling operations (highlighted in red) before continuing.",
+      success: false,
+    });
     return false;
   }
   return true;
@@ -3085,7 +3509,11 @@ async function previewRefactorForPanel(details, data) {
   }
   const payload = refactorPayloadFromPanel(details, data);
   if (!payload.leaf_tasks.length && !payload.clusters.length) {
-    alert("Add at least one leaf or cluster extract operation.");
+    showRefactorDialog({
+      title: "Refactor preview",
+      message: "Add at least one leaf or cluster extract operation.",
+      success: false,
+    });
     return;
   }
   try {
@@ -3101,9 +3529,17 @@ async function previewRefactorForPanel(details, data) {
       resultEl.textContent = JSON.stringify(plan, null, 2);
       resultEl.classList.remove("hidden");
     }
-    alert(formatRefactorPreview(plan));
+    showRefactorDialog({
+      title: plan.ok ? "Refactor preflight OK" : "Refactor preflight failed",
+      message: formatRefactorPreview(plan, { overwriteExisting: payload.overwrite_existing !== false }),
+      success: plan.ok !== false,
+    });
   } catch (err) {
-    alert(`Refactor preview failed: ${err.message}`);
+    showRefactorDialog({
+      title: "Refactor preview failed",
+      message: err.message || String(err),
+      success: false,
+    });
   }
 }
 
@@ -3119,10 +3555,23 @@ const REFACTOR_PROGRESS_PHASE_LABELS = {
   "refactor.parallel.start": "Parallel",
   "refactor.parallel.complete": "Parallel",
   "refactor.progress": "Progress",
+  "refactor.pause": "Pause",
+  "refactor.toolkit_cache": "Cache",
+  cache: "Cache",
   start: "Start",
   complete: "Complete",
   log: "Log",
 };
+
+function refactorProgressLabelFromMessage(message) {
+  const text = String(message || "");
+  if (/Phase 1\/5:/i.test(text)) return "1 · Sub uploads";
+  if (/Phase 2\/5:/i.test(text)) return "2 · Refresh cache";
+  if (/Phase 3\/5:/i.test(text)) return "3 · Main playbook";
+  if (/Phase 4\/5:/i.test(text)) return "4 · Refresh cache";
+  if (/Phase 5\/5:/i.test(text)) return "5 · Diff / report";
+  return null;
+}
 
 function refactorProgressLevel(event) {
   const phase = String(event?.phase || "");
@@ -3140,7 +3589,11 @@ function normalizeRefactorProgressEvent(event) {
     return { phase: "log", phaseLabel: "Log", message: event, level: "info" };
   }
   const phase = String(event?.phase || event?.message || "log");
-  const phaseLabel = REFACTOR_PROGRESS_PHASE_LABELS[phase] || phase;
+  const messageText = String(event?.message || "");
+  const phaseLabel =
+    refactorProgressLabelFromMessage(messageText) ||
+    REFACTOR_PROGRESS_PHASE_LABELS[phase] ||
+    phase;
   const parts = [];
   if (event?.step_id) {
     parts.push(`[${event.step_id}]`);
@@ -3223,6 +3676,12 @@ function renderRefactorResultSummary(panel, result) {
   if (Array.isArray(compares) && compares.length) {
     const equal = compares.filter((row) => row.equal === true).length;
     lines.push(`Compare: ${equal}/${compares.length} equal`);
+  } else if (Array.isArray(result.extractions) && result.extractions.length) {
+    const withCompare = result.extractions.filter((row) => row.compare);
+    const equal = withCompare.filter((row) => row.compare?.equal === true).length;
+    if (withCompare.length) {
+      lines.push(`Diff (phase 5): ${equal}/${withCompare.length} sub-playbooks equal`);
+    }
   }
   if (result.job_cache_key) {
     lines.push(`Cache: ${result.job_cache_key}`);
@@ -3342,6 +3801,20 @@ async function runRefactorForPanel(details, data) {
     alert("Add at least one leaf or cluster extract operation.");
     return;
   }
+
+  let existingTargets = [];
+  try {
+    const plan = await api("/api/playbooks/refactor/preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    existingTargets = Array.isArray(plan.existing_targets) ? plan.existing_targets : [];
+  } catch (err) {
+    alert(`Could not preflight refactor: ${err.message}`);
+    return;
+  }
+
+  const overwriteRequested = payload.overwrite_existing !== false;
   const summary = [
     "Run refactor on live tenant?",
     "",
@@ -3351,9 +3824,23 @@ async function runRefactorForPanel(details, data) {
     `Clusters: ${payload.clusters.join(", ") || "(none)"}`,
     `Post updates: ${payload.post_task_updates.join("; ") || "(none)"}`,
     "",
+    existingTargets.length
+      ? `Warning: ${existingTargets.length} existing tenant playbook(s) match planned output names (listed below).`
+      : "",
+    formatRefactorExistingTargets(existingTargets),
+    "",
+    overwriteRequested
+      ? existingTargets.length
+        ? "Overwrite is enabled — you must confirm replacement in the next step."
+        : "Overwrite is enabled for matching target names (none found on this tenant)."
+      : "Overwrite is off — matching names will be reused without replacing content.",
+    "",
     "Progress streams over WebSocket when connected (falls back to HTTP).",
-    "This uploads new sub-playbooks and a parent copy (never overwrites the source playbook).",
-  ].join("\n");
+    "The source playbook is never modified.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const proceed =
     typeof showConfirmDialog === "function"
       ? await showConfirmDialog({ title: "Confirm refactor", message: summary, proceedLabel: "Run refactor" })
@@ -3361,12 +3848,41 @@ async function runRefactorForPanel(details, data) {
   if (!proceed) {
     return;
   }
+
+  if (overwriteRequested && existingTargets.length) {
+    const overwriteSummary = [
+      "Replace existing playbooks on the tenant?",
+      "",
+      formatRefactorExistingTargets(existingTargets),
+      "",
+      "This overwrites playbook content in place (same playbook IDs). This cannot be undone from the toolkit.",
+    ].join("\n");
+    const overwriteOk =
+      typeof showConfirmDialog === "function"
+        ? await showConfirmDialog({
+            title: "Confirm overwrite",
+            message: overwriteSummary,
+            proceedLabel: "Overwrite and run",
+            destructive: true,
+          })
+        : window.confirm(overwriteSummary);
+    if (!overwriteOk) {
+      return;
+    }
+    payload.overwrite_confirmed = true;
+  }
+
   await submitRefactorJob(panel, "playbooks.refactor.execute", payload, ".refactor-run-btn");
 }
 
 function bindRefactorPanel(details, data) {
   const panel = details.querySelector(".refactor-panel");
   if (!panel) return;
+  const overwriteEl = panel.querySelector(".refactor-overwrite-checkbox");
+  if (overwriteEl) {
+    overwriteEl.checked = true;
+    overwriteEl.defaultChecked = true;
+  }
   loadRefactorPresetsIntoPanel(panel);
   panel.querySelector(".refactor-add-btn")?.addEventListener("click", () => {
     const type = panel.querySelector(".refactor-add-type")?.value || "leaf";
@@ -3453,38 +3969,11 @@ function collectBindingHintsFromAnalysis(data) {
   return hints;
 }
 
-function renderCopyBindingPreview(host, plan, hints) {
+function renderCopyBindingPreview(host, plan, analysisData) {
   if (!host) {
     return;
   }
-  const lines = [];
-  if (hints.length) {
-    lines.push("UUID-only bindings in flow graph (enriched from source cache before target upload):");
-    hints.forEach((hint) => {
-      const where = `${hint.playbook} #${hint.taskId} ${hint.taskLabel}`;
-      lines.push(`  · ${hint.kind}: ${where} → ${hint.binding}`);
-    });
-    lines.push("");
-  } else {
-    lines.push("No UUID-only playbook/script bindings detected in the flow graph.");
-    lines.push("");
-  }
-  lines.push(`Target: ${plan.target_profile}`);
-  lines.push(
-    `Playbooks — copy ${plan.playbooks?.counts?.copy || 0}, update ${plan.playbooks?.counts?.update || 0}, skip ${plan.playbooks?.counts?.skip || 0}`,
-  );
-  lines.push(
-    `Scripts — copy ${plan.scripts?.counts?.copy || 0}, update ${plan.scripts?.counts?.update || 0}, skip ${plan.scripts?.counts?.skip || 0}`,
-  );
-  if (plan.warnings?.length) {
-    lines.push("", "Warnings:");
-    plan.warnings.forEach((warning) => lines.push(`  - ${warning}`));
-  }
-  if (plan.missing_sub_playbooks?.length) {
-    lines.push("", "Missing sub-playbooks:");
-    plan.missing_sub_playbooks.forEach((item) => lines.push(`  - ${item.lookup_key}`));
-  }
-  host.textContent = lines.join("\n");
+  host.textContent = formatComponentsPlanSummary(plan, analysisData);
   host.classList.remove("hidden");
 }
 
@@ -3553,6 +4042,13 @@ async function previewCopyPlanForPanel(details, data) {
   };
   const previewHost = details.querySelector(".analysis-copy-binding-preview");
   try {
+    const cacheChoice = await promptStaleCacheChoice([
+      { profile: data.profile, scopes: ["playbooks", "scripts"] },
+      { profile: target, scopes: ["playbooks", "scripts"] },
+    ]);
+    if (cacheChoice === "cancel") {
+      return;
+    }
     const plan = await withLoader(
       () =>
         api("/api/playbooks/copy-components/preview", {
@@ -3561,8 +4057,7 @@ async function previewCopyPlanForPanel(details, data) {
         }),
       "Planning component copy…",
     );
-    const hints = collectBindingHintsFromAnalysis(data);
-    renderCopyBindingPreview(previewHost, plan, hints);
+    renderCopyBindingPreview(previewHost, plan, data);
   } catch (err) {
     if (previewHost) {
       previewHost.textContent = `Preview failed: ${err.message}`;

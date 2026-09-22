@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
-pytest.importorskip("playbook_utils.graph")
-
 from cortex_ps_toolkit.playbooks.refactor_graph_validation import (
     build_refactor_task_catalog,
     validate_cluster_extract,
@@ -35,8 +31,8 @@ def test_build_refactor_task_catalog_marks_leaf_candidates() -> None:
     catalog = build_refactor_task_catalog(MINI_PLAYBOOK)
     by_id = {row["id"]: row for row in catalog}
     assert "0" not in by_id
+    assert by_id["1"]["leaf_ok"] is True
     assert by_id["2"]["leaf_ok"] is True
-    assert by_id["1"]["leaf_ok"] is False
 
 
 def test_validate_cluster_extract_accepts_simple_range() -> None:
@@ -45,8 +41,8 @@ def test_validate_cluster_extract_accepts_simple_range() -> None:
     assert result["cluster_task_ids"]
 
 
-def test_validate_leaf_extract_rejects_non_root() -> None:
-    result = validate_leaf_extract(MINI_PLAYBOOK, "1")
+def test_validate_leaf_extract_rejects_conflicting_multi_leaf() -> None:
+    result = validate_leaf_extract(MINI_PLAYBOOK, "2", other_leaf_task_ids=["1"])
     assert result["ok"] is False
     assert result["reasons"]
 

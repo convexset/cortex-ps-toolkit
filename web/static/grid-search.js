@@ -19,10 +19,30 @@ function rowMatchesSearch(rowData, terms, { idField = "id", nameField = "name" }
   });
 }
 
+function rowMatchesSearchFields(rowData, terms, searchFields, { idField = "id", nameField = "name" } = {}) {
+  if (!terms.length) {
+    return true;
+  }
+  if (searchFields === "all") {
+    const haystack = Object.values(rowData || {})
+      .map((value) => String(value ?? "").toLowerCase())
+      .join("\0");
+    return terms.every((term) => haystack.includes(term.toLowerCase()));
+  }
+  if (Array.isArray(searchFields) && searchFields.length) {
+    return terms.every((term) => {
+      const needle = term.toLowerCase();
+      return searchFields.some((field) => String(rowData[field] ?? "").toLowerCase().includes(needle));
+    });
+  }
+  return rowMatchesSearch(rowData, terms, { idField, nameField });
+}
+
 function attachGridSearch(table, inputEl, options = {}) {
   const {
     idField = "id",
     nameField = "name",
+    searchFields = "all",
     selectable = true,
     onSelectionChange,
   } = options;
@@ -42,7 +62,9 @@ function attachGridSearch(table, inputEl, options = {}) {
     if (!terms.length) {
       table.clearFilter(true);
     } else {
-      table.setFilter((data) => rowMatchesSearch(data, terms, { idField, nameField }));
+      table.setFilter((data) =>
+        rowMatchesSearchFields(data, terms, searchFields, { idField, nameField }),
+      );
     }
     if (selectable) {
       restoreSelection();
@@ -142,4 +164,5 @@ function attachGridSearch(table, inputEl, options = {}) {
 
 window.parseSearchTerms = parseSearchTerms;
 window.rowMatchesSearch = rowMatchesSearch;
+window.rowMatchesSearchFields = rowMatchesSearchFields;
 window.attachGridSearch = attachGridSearch;

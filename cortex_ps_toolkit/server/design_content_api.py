@@ -18,10 +18,12 @@ from ..design_content.service import get_item_body, list_cached_items, refresh_a
 from ..design_content.types import ASSET_KINDS, AssetKind
 from ..platforms import UnsupportedOperation
 from .common import error_response, read_json, run_sync
+from ..core.batch_copy_progress import chain_progress
 from .copy_notifications import (
     maybe_publish_item_copied_from_progress,
     publish_object_bundle_complete_notification,
 )
+from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
 from .delete_notifications import publish_delete_success_notifications
 
 
@@ -126,6 +128,8 @@ async def api_design_content_copy(request: Request) -> JSONResponse:
         body = await read_json(request)
         source, target, item_ids, overwrite, stop_on_conflict, name_suffix = _parse_copy_body(body, asset)
         prefer_direct = bool(body.get("prefer_direct_on_xsoar6", True))
+        title = f"Copy {asset}"
+        on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
             copy_assets_to_tenant,
             source,
@@ -136,14 +140,9 @@ async def api_design_content_copy(request: Request) -> JSONResponse:
             stop_on_conflict=stop_on_conflict,
             name_suffix=name_suffix,
             prefer_direct_on_xsoar6=prefer_direct,
+            on_progress=on_progress,
         )
-        if result.get("executed"):
-            publish_copy_success_notifications(
-                result,
-                title=f"Copy {asset}",
-                source=source,
-                target=target,
-            )
+        publish_standard_copy_outcome(result, title=title, source=source, target=target)
         return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400
@@ -193,13 +192,18 @@ async def api_design_content_orchestrate(request: Request) -> JSONResponse:
         selections = body.get("selections") or {}
         if not source or not target or not isinstance(selections, dict):
             raise ValueError("source_profile, target_profile, selections required")
-        def on_progress(event: dict[str, Any]) -> None:
+        def _item_progress(event: dict[str, Any]) -> None:
             maybe_publish_item_copied_from_progress(
                 event,
                 source=source,
                 target=target,
                 title="Object Bundle copy",
             )
+
+        on_progress = chain_progress(
+            http_staged_copy_progress("Object Bundle copy"),
+            _item_progress,
+        )
 
         result = await run_sync(
             execute_cross_tenant_workflow,
@@ -217,6 +221,13 @@ async def api_design_content_orchestrate(request: Request) -> JSONResponse:
         if result.get("executed"):
             publish_object_bundle_complete_notification(
                 result,
+                source=source,
+                target=target,
+            )
+        else:
+            publish_standard_copy_outcome(
+                result,
+                title="Object Bundle copy",
                 source=source,
                 target=target,
             )

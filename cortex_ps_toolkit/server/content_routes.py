@@ -13,7 +13,8 @@ from ..credentials import get_profile
 from ..platforms import UnsupportedOperation
 from ..settings import cache_ttl_seconds
 from .common import error_response, read_json, run_sync
-from .copy_notifications import publish_copy_success_notifications
+from ..core.batch_copy_progress import chain_progress
+from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
 from .delete_notifications import publish_delete_success_notifications
 
 
@@ -117,6 +118,7 @@ def make_copy_handler(
                 raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
             if not source or not target or not item_ids:
                 raise ValueError(f"source_profile, target_profile, {ids_key} required")
+            on_progress = chain_progress(http_staged_copy_progress(copy_title))
             result = await run_sync(
                 copy_to_tenant,
                 source,
@@ -124,14 +126,14 @@ def make_copy_handler(
                 item_ids,
                 overwrite=overwrite,
                 stop_on_conflict=stop_on_conflict,
+                on_progress=on_progress,
             )
-            if not result.get("aborted"):
-                publish_copy_success_notifications(
-                    result,
-                    title=copy_title,
-                    source=source,
-                    target=target,
-                )
+            publish_standard_copy_outcome(
+                result,
+                title=copy_title,
+                source=source,
+                target=target,
+            )
             return JSONResponse(result)
         except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
             status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404

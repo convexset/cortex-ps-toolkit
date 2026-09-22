@@ -19,9 +19,16 @@ function initContentViewer() {
 
   copyBtn?.addEventListener("click", async () => {
     const panel = document.getElementById("content-viewer-panel");
-    if (!panel?.textContent) return;
+    const activeTab = getActiveContentViewerTab();
+    const text =
+      activeTab?.copyText ||
+      activeTab?.content ||
+      panel?.dataset.copyText ||
+      panel?.textContent ||
+      "";
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(panel.textContent);
+      await navigator.clipboard.writeText(text);
       window.cptkWs?.showToast?.({
         level: "success",
         message: "Copied to clipboard",
@@ -35,6 +42,37 @@ function initContentViewer() {
   dialog?.addEventListener("close", () => {
     contentViewerActiveTabId = null;
   });
+}
+
+function getActiveContentViewerTab() {
+  const tabsHost = document.getElementById("content-viewer-tabs");
+  const button = tabsHost?.querySelector(`[data-tab-id="${contentViewerActiveTabId}"]`);
+  return button?._tabData || null;
+}
+
+function renderContentViewerPanel(panel, tab) {
+  if (!panel || !tab) return;
+  panel.dataset.format = tab.format || "text";
+  panel.dataset.copyText = tab.copyText || tab.content || tab.emptyMessage || "";
+
+  if (tab.format === "html") {
+    panel.classList.add("content-viewer-panel--rich");
+    panel.classList.remove("content-viewer-panel--text");
+    const emptyHtml =
+      typeof window.escapeHtml === "function"
+        ? window.escapeHtml(tab.emptyMessage || "(empty)")
+        : tab.emptyMessage || "(empty)";
+    panel.innerHTML = tab.html || `<p class="cvr-empty">${emptyHtml}</p>`;
+    return;
+  }
+
+  panel.classList.add("content-viewer-panel--text");
+  panel.classList.remove("content-viewer-panel--rich");
+  panel.innerHTML = "";
+  const pre = document.createElement("pre");
+  pre.className = "content-viewer-pre";
+  pre.textContent = tab.content || tab.emptyMessage || "(empty)";
+  panel.appendChild(pre);
 }
 
 function activateContentViewerTab(tabId) {
@@ -54,8 +92,7 @@ function activateContentViewerTab(tabId) {
 
   if (!panel || !activeTab) return;
   contentViewerActiveTabId = tabId;
-  panel.textContent = activeTab.content || activeTab.emptyMessage || "(empty)";
-  panel.dataset.format = activeTab.format || "text";
+  renderContentViewerPanel(panel, activeTab);
 }
 
 function showContentViewer({ title, subtitle = "", tabs = [] }) {
@@ -65,7 +102,14 @@ function showContentViewer({ title, subtitle = "", tabs = [] }) {
   const subtitleEl = document.getElementById("content-viewer-subtitle");
   const tabsHost = document.getElementById("content-viewer-tabs");
   const panel = document.getElementById("content-viewer-panel");
-  const visibleTabs = tabs.filter((tab) => tab && (tab.content || tab.emptyMessage));
+  const visibleTabs = tabs.filter(
+    (tab) =>
+      tab &&
+      (tab.content ||
+        tab.html ||
+        tab.emptyMessage ||
+        tab.format === "html"),
+  );
 
   if (!dialog || !titleEl || !subtitleEl || !tabsHost || !panel) {
     throw new Error("Content viewer dialog is not available");
@@ -96,59 +140,12 @@ function showContentViewer({ title, subtitle = "", tabs = [] }) {
   dialog.showModal();
 }
 
-function contentDetailTabsFromPayload(data) {
-  const tabs = [];
-  if (data.configuration !== undefined) {
-    tabs.push({
-      id: "configuration",
-      label: "Configuration",
-      content: JSON.stringify(data.configuration, null, 2),
-      format: "json",
-      emptyMessage: "{}",
-    });
-  }
-  if (data.script !== undefined) {
-    tabs.push({
-      id: "script",
-      label: data.script_language ? `Script (${data.script_language})` : "Script",
-      content: data.script,
-      format: "text",
-      emptyMessage: "(no script body)",
-    });
-  }
-  if (data.data !== undefined) {
-    tabs.push({
-      id: "data",
-      label: data.list_type ? `Data (${data.list_type})` : "Data",
-      content: data.data,
-      format: "text",
-      emptyMessage: "(empty list)",
-    });
-  }
-  if (data.parameters !== undefined) {
-    tabs.push({
-      id: "parameters",
-      label: "Parameters",
-      content: JSON.stringify(data.parameters, null, 2),
-      format: "json",
-      emptyMessage: "[]",
-    });
-  }
-  if (data.commands !== undefined) {
-    tabs.push({
-      id: "commands",
-      label: "Commands",
-      content: JSON.stringify(data.commands, null, 2),
-      format: "json",
-      emptyMessage: "[]",
-    });
-  }
-  return tabs;
-}
+window.showContentViewer = showContentViewer;
 
 async function openContentDetailViewer({ title, subtitle = "", fetchUrl, loaderMessage = "Loading…" }) {
   const data = await withLoader(() => api(fetchUrl), loaderMessage);
-  const tabs = contentDetailTabsFromPayload(data);
+  const tabsFn = window.contentDetailTabsFromPayload;
+  const tabs = typeof tabsFn === "function" ? tabsFn(data) : [];
   const resolvedSubtitle =
     subtitle ||
     [data.profile, data.id].filter(Boolean).join(" · ");

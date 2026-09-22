@@ -1,0 +1,48 @@
+{
+  "drop_playbook_keys": [
+    "cacheVersn",
+    "modified",
+    "created",
+    "sizeInBytes",
+    "packID",
+    "packName",
+    "itemVersion",
+    "fromServerVersion",
+    "toServerVersion",
+    "propagationLabels",
+    "definitionId",
+    "vcShouldIgnore",
+    "vcShouldKeepItemLegacyProdMachine",
+    "commitMessage",
+    "shouldCommit",
+    "taskIds"
+  ],
+  "drop_inner_task_keys": [
+    "id",
+    "modified",
+    "created",
+    "sizeInBytes",
+    "cacheVersn",
+    "sequenceNumber",
+    "primaryTerm",
+    "numericId",
+    "syncHash"
+  ],
+  "drop_task_node_keys": [
+    "taskId"
+  ],
+  "compare_ignore_keys": [
+    "id",
+    "taskId",
+    "view",
+    "version",
+    "cacheVersn",
+    "modified",
+    "created",
+    "sizeInBytes",
+    "sequenceNumber",
+    "primaryTerm",
+    "numericId",
+    "syncHash"
+  ]
+}

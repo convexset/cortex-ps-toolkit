@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# Subset aligned with bay/playbook-utils/playbook_utils/keys.py (CANONICAL_TO_YAML).
+# Subset aligned with playbook-utils/playbook_utils/keys.py (CANONICAL_TO_YAML).
 _CANONICAL_TO_YAML: dict[str, str] = {
     "startTaskId": "starttaskid",
     "taskId": "taskid",

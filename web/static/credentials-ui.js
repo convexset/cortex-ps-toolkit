@@ -18,7 +18,7 @@ function initCredentialsGrid() {
     height: "460px",
     layout: "fitColumns",
     placeholder: "No profiles — Import lab or Add profile",
-    columns: [
+    columns: cptkEnhanceColumns([
       { title: "Slug", field: "slug", width: 160 },
       { title: "Platform", field: "tenant_type", width: 90 },
       { title: "API ID", field: "api_id", width: 70 },
@@ -31,8 +31,8 @@ function initCredentialsGrid() {
         formatter: (cell) => (cell.getValue() === false ? "skip" : "verify"),
       },
       { title: "Expires", field: "expires_at", width: 120, formatter: (c) => c.getValue() || "—" },
-      { title: "Actions", formatter: credActionFormatter, width: 200, headerSort: false },
-    ],
+      { title: "Actions", formatter: credActionFormatter, width: 200, headerSort: false, headerFilter: false },
+    ]),
   });
 
   const searchInput = document.getElementById("credentials-search");

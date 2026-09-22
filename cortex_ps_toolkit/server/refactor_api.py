@@ -15,7 +15,8 @@ from ..playbooks.refactor import (
     plan_refactor,
     plan_task_updates,
 )
-from ..playbooks.refactor_bridge import playbook_utils_runtime
+from ..playbooks.refactor_overwrite import coalesce_overwrite_existing
+from ..playbooks.refactor_cache import RefactorCacheMiss, load_toolkit_playbook_body
 from ..playbooks.refactor_graph_validation import validate_cluster_extract, validate_leaf_extract
 from ..playbooks.refactor_presets import get_refactor_preset, list_refactor_presets
 from ..playbooks.refactor_workflow import execute_refactor_workflow
@@ -79,28 +80,21 @@ async def api_playbooks_refactor_validate_extract(request: Request) -> JSONRespo
         if kind not in {"leaf", "cluster"}:
             return JSONResponse({"error": "kind must be leaf or cluster"}, status_code=400)
 
-        with playbook_utils_runtime(profile, operation_id="playbooks.refactor.validate_extract") as (
-            _profile,
-            _creds,
-            _client,
-            cache,
-            _policy,
-        ):
-            playbook = cache.resolve(playbook_id)
-            if kind == "leaf":
-                result = validate_leaf_extract(
-                    playbook,
-                    str(body.get("task_id") or ""),
-                    other_leaf_task_ids=_str_list(body.get("other_leaf_tasks")),
-                )
-            else:
-                result = validate_cluster_extract(
-                    playbook,
-                    str(body.get("start_id") or ""),
-                    str(body.get("end_id") or ""),
-                )
+        playbook = load_toolkit_playbook_body(profile, playbook_id=playbook_id)
+        if kind == "leaf":
+            result = validate_leaf_extract(
+                playbook,
+                str(body.get("task_id") or ""),
+                other_leaf_task_ids=_str_list(body.get("other_leaf_tasks")),
+            )
+        else:
+            result = validate_cluster_extract(
+                playbook,
+                str(body.get("start_id") or ""),
+                str(body.get("end_id") or ""),
+            )
         return JSONResponse(result)
-    except (TenantApiError, UnsupportedOperation, KeyError, ValueError, RuntimeError) as exc:
+    except (TenantApiError, UnsupportedOperation, RefactorCacheMiss, KeyError, ValueError, RuntimeError) as exc:
         return error_response(exc, _status_for_exc(exc))
 
 
@@ -147,6 +141,8 @@ async def api_playbooks_refactor_execute(request: Request) -> JSONResponse:
             upload_parent_on_mismatch=bool(body.get("upload_parent_on_mismatch")),
             require_match=bool(body.get("require_match")),
             force=bool(body.get("force")),
+            overwrite_existing=coalesce_overwrite_existing(body.get("overwrite_existing")),
+            overwrite_confirmed=bool(body.get("overwrite_confirmed")),
             refactor_mode=str(body["refactor_mode"]) if body.get("refactor_mode") else None,
         )
         return JSONResponse(result)

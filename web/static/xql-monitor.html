@@ -300,11 +300,11 @@
   <header>
     <h1>XQL Query Tool</h1>
     <p class="subtitle" id="profile-line">Profile: —</p>
-    <p class="subtitle">
+    <p class="subtitle" id="tool-intro">
       Run Cortex XQL via the
       <a href="https://cortex-docs.paloaltonetworks.com/xsiam-api/cortex-platform/xql-query" target="_blank" rel="noopener noreferrer">XQL Query API</a>
-      (start → poll → stream). Offline TSV/JSONL load works from a local file; live API calls need a
-      <a href="#cors-note">CORS workaround</a> (the bundled Python proxy is the simplest option).
+      (start → poll → stream). When embedded in Cortex PS Toolkit, live queries use the active API profile and <code>/api/xql/run</code>.
+      Offline TSV/JSONL load still works from a local file.
     </p>
   </header>
 
@@ -443,7 +443,16 @@
     function updateProfileLine() {
       const slug = toolkitProfile();
       const line = document.getElementById("profile-line");
+      const intro = document.getElementById("tool-intro");
       if (line) line.textContent = slug ? `Profile: ${slug} (from API Profiles)` : "No profile selected in parent app.";
+      if (intro && slug) {
+        intro.innerHTML = [
+          "Run Cortex XQL via the",
+          '<a href="https://cortex-docs.paloaltonetworks.com/xsiam-api/cortex-platform/xql-query" target="_blank" rel="noopener noreferrer">XQL Query API</a>',
+          "(start → poll → stream). Live queries run through the toolkit using the active API profile.",
+          "Offline TSV/JSONL load still works from a local file.",
+        ].join(" ");
+      }
     }
 
     async function toolkitApiRun(query, timeframeMs) {

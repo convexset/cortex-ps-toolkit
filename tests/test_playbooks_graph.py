@@ -149,6 +149,6 @@ def test_conditional_branches_union_predecessor_paths() -> None:
         },
     }
     branches = compute_conditional_branches_by_task(playbook)
-    assert branches["2"] == {"yes"}
-    assert branches["3"] == {"no"}
-    assert branches["4"] == {"yes"}
+    assert branches["2"] == [{"label": "yes", "condition_task_id": "1"}]
+    assert branches["3"] == [{"label": "no", "condition_task_id": "1"}]
+    assert branches["4"] == [{"label": "yes", "condition_task_id": "1"}]

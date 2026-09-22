@@ -2,6 +2,8 @@
 
 Professional-services tooling for **Cortex XSOAR** and **Cortex XSIAM** tenants: credentials, content caches, XQL queries, playbook analysis/refactoring, and content management.
 
+Playbook refactor (`extract-multi`) uses the in-repo [`playbook-utils/`](playbook-utils/) package (import name `playbook_utils`). Override the tree with `CORTEX_PS_PLAYBOOK_UTILS_PATH` only if needed.
+
 **Development approach:** build and refine **Python libraries first**, then expose them through a **local web server** started by a single script (`./scripts/dev-server.sh`) with **debug mode** and **Python auto-reload**. CLI remains available for automation.
 
 ---

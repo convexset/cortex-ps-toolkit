@@ -3,6 +3,7 @@
 let integrationsDefinitionsTable = null;
 let integrationsDefinitionsSearch = null;
 let integrationsInstancesTable = null;
+let integrationsInstancesSearch = null;
 let integrationsCommandsTable = null;
 let integrationsCommandsSearch = null;
 let integrationsTenantCredsTable = null;
@@ -17,12 +18,16 @@ function initIntegrationsPanel() {
   if (integrationsPanelInitialized) return;
   integrationsPanelInitialized = true;
 
+  const gridDefault = typeof cptkGridHeight === "function" ? cptkGridHeight("default") : "420px";
+  const gridCompact = typeof cptkGridHeight === "function" ? cptkGridHeight("compact") : "320px";
+  const gridNested = typeof cptkGridHeight === "function" ? cptkGridHeight("nested") : "260px";
+
   integrationsDefinitionsTable = new Tabulator("#integrations-definitions-grid", {
-    height: "320px",
+    height: gridCompact,
     layout: "fitColumns",
     selectableRows: true,
     placeholder: "No cached integration definitions — refresh cache",
-    columns: [
+    columns: cptkEnhanceColumns([
       {
         formatter: "rowSelection",
         hozAlign: "center",
@@ -34,7 +39,7 @@ function initIntegrationsPanel() {
       { title: "Name", field: "name", minWidth: 160 },
       { title: "Display", field: "display", minWidth: 160 },
       { title: "Category", field: "category", width: 120 },
-      { title: "Instances", field: "instance_count", width: 90, hozAlign: "right" },
+      { title: "Instances", field: "instance_count", width: 90, hozAlign: "right", sorter: "number" },
       {
         title: "Script",
         field: "has_script",
@@ -53,7 +58,7 @@ function initIntegrationsPanel() {
         width: 80,
         formatter: "tickCross",
       },
-    ],
+    ]),
   });
   integrationsDefinitionsTable.on("rowSelectionChanged", updateIntegrationsSelectionCount);
   integrationsDefinitionsTable.on("rowDblClick", (_event, row) => {
@@ -67,11 +72,11 @@ function initIntegrationsPanel() {
   }
 
   integrationsInstancesTable = new Tabulator("#integrations-instances-grid", {
-    height: "260px",
+    height: gridNested,
     layout: "fitColumns",
     selectableRows: true,
     placeholder: "No cached integration instances",
-    columns: [
+    columns: cptkEnhanceColumns([
       {
         formatter: "rowSelection",
         hozAlign: "center",
@@ -82,23 +87,35 @@ function initIntegrationsPanel() {
       },
       { title: "Instance", field: "name", minWidth: 160 },
       { title: "Brand", field: "brand", minWidth: 140 },
-      { title: "Enabled", field: "enabled", width: 90 },
+      {
+        title: "Enabled",
+        field: "enabled",
+        width: 90,
+        formatter: "tickCross",
+        mutator: (value) => value === true || value === "true",
+      },
       { title: "Engine", field: "engine", width: 120 },
       { title: "Pack", field: "pack_name", minWidth: 120 },
       { title: "System", field: "system", width: 80, formatter: "tickCross" },
-    ],
+    ]),
   });
   integrationsInstancesTable.on("rowSelectionChanged", updateIntegrationsInstancesSelectionCount);
   integrationsInstancesTable.on("rowDblClick", (_event, row) => {
     void viewIntegrationInstance(row.getData());
   });
+  const instancesSearchInput = document.getElementById("integrations-instances-search");
+  if (instancesSearchInput) {
+    integrationsInstancesSearch = attachGridSearch(integrationsInstancesTable, instancesSearchInput, {
+      onSelectionChange: updateIntegrationsInstancesSelectionCount,
+    });
+  }
 
   integrationsCommandsTable = new Tabulator("#integrations-commands-grid", {
-    height: "320px",
+    height: gridCompact,
     layout: "fitColumns",
     selectableRows: true,
     placeholder: "No cached integration commands — refresh cache",
-    columns: [
+    columns: cptkEnhanceColumns([
       {
         formatter: "rowSelection",
         hozAlign: "center",
@@ -110,9 +127,9 @@ function initIntegrationsPanel() {
       { title: "Name", field: "name", minWidth: 160 },
       { title: "Display", field: "display", minWidth: 160 },
       { title: "Category", field: "category", width: 120 },
-      { title: "Commands", field: "command_count", width: 100, hozAlign: "right" },
+      { title: "Commands", field: "command_count", width: 100, hozAlign: "right", sorter: "number" },
       { title: "Feed", field: "feed", width: 70, formatter: "tickCross" },
-    ],
+    ]),
   });
   integrationsCommandsTable.on("rowSelectionChanged", updateIntegrationsCommandsSelectionCount);
   integrationsCommandsTable.on("rowDblClick", (_event, row) => {
@@ -126,42 +143,52 @@ function initIntegrationsPanel() {
   }
 
   integrationsTenantCredsTable = new Tabulator("#integrations-tenant-creds-grid", {
-    height: "220px",
+    height: gridNested,
     layout: "fitColumns",
+    selectableRows: true,
     placeholder: "No cached tenant credentials",
-    columns: [
+    columns: cptkEnhanceColumns([
       { title: "Name", field: "name", minWidth: 160 },
       { title: "User", field: "user", minWidth: 120 },
       { title: "Workgroup", field: "workgroup", minWidth: 120 },
       { title: "Password", field: "has_password", width: 90, formatter: "tickCross" },
       { title: "Certificate", field: "has_certificate", width: 100, formatter: "tickCross" },
       { title: "Locked", field: "locked", width: 80, formatter: "tickCross" },
-    ],
+    ]),
+  });
+
+  integrationsTenantCredsTable.on("rowDblClick", (_event, row) => {
+    viewTenantCredential(row.getData());
   });
 
   integrationsPacksTable = new Tabulator("#integrations-packs-grid", {
-    height: "220px",
+    height: gridNested,
     layout: "fitColumns",
+    selectableRows: true,
     placeholder: "No cached installed packs",
-    columns: [
+    columns: cptkEnhanceColumns([
       { title: "ID", field: "id", minWidth: 140 },
       { title: "Name", field: "name", minWidth: 180 },
       { title: "Version", field: "current_version", width: 100 },
       { title: "Update", field: "update_available", width: 90, formatter: "tickCross" },
-    ],
+    ]),
+  });
+
+  integrationsPacksTable.on("rowDblClick", (_event, row) => {
+    viewInstalledPack(row.getData());
   });
 
   vaultEntriesTable = new Tabulator("#vault-entries-grid", {
-    height: "220px",
+    height: gridNested,
     layout: "fitColumns",
     placeholder: "Unlock vault to view entries",
-    columns: [
+    columns: cptkEnhanceColumns([
       { title: "Name", field: "name", minWidth: 160 },
       { title: "User", field: "user", minWidth: 120 },
       { title: "Password", field: "has_password", width: 90, formatter: "tickCross" },
       { title: "Certificate", field: "has_certificate", width: 100, formatter: "tickCross" },
       { title: "Notes", field: "notes", minWidth: 180 },
-    ],
+    ]),
   });
 
   document.getElementById("integrations-refresh")?.addEventListener("click", refreshIntegrationsCache);
@@ -180,14 +207,17 @@ function initIntegrationsPanel() {
     }
     updateIntegrationsCommandsSelectionCount();
   });
-  document.getElementById("integrations-select-none")?.addEventListener("click", () => {
-    if (integrationsDefinitionsSearch) {
-      integrationsDefinitionsSearch.clearSelection();
-    } else {
-      integrationsDefinitionsTable?.deselectRow();
-    }
-    updateIntegrationsSelectionCount();
-  });
+  if (typeof bindGridSelectionToolbar === "function") {
+    bindGridSelectionToolbar({
+      table: integrationsDefinitionsTable,
+      search: integrationsDefinitionsSearch,
+      visibleBtnId: "integrations-select-all-visible",
+      allBtnId: "integrations-select-all",
+      noneBtnId: "integrations-select-none",
+      onSelectionChange: updateIntegrationsSelectionCount,
+    });
+  }
+
   document.getElementById("integrations-delete")?.addEventListener("click", deleteSelectedIntegrations);
   document.getElementById("integrations-copy")?.addEventListener("click", (event) => {
     copySelectedIntegrations(event.currentTarget);
@@ -256,6 +286,44 @@ async function viewIntegrationCommands(row) {
     title: row.display || row.name || itemId,
     fetchUrl: `/api/integrations/commands/${encodeURIComponent(itemId)}?profile=${encodeURIComponent(profile)}`,
     loaderMessage: "Loading integration commands…",
+  });
+}
+
+function viewTenantCredential(row) {
+  if (!row || typeof showContentViewer !== "function" || typeof renderTenantCredentialOverview !== "function") {
+    return;
+  }
+  showContentViewer({
+    title: row.name || "Tenant credential",
+    subtitle: activeIntegrationsProfile(),
+    tabs: [
+      {
+        id: "overview",
+        label: "Overview",
+        format: "html",
+        html: renderTenantCredentialOverview(row),
+        copyText: JSON.stringify(row, null, 2),
+      },
+    ],
+  });
+}
+
+function viewInstalledPack(row) {
+  if (!row || typeof showContentViewer !== "function" || typeof renderPackOverview !== "function") {
+    return;
+  }
+  showContentViewer({
+    title: row.name || row.id || "Pack",
+    subtitle: activeIntegrationsProfile(),
+    tabs: [
+      {
+        id: "overview",
+        label: "Overview",
+        format: "html",
+        html: renderPackOverview(row),
+        copyText: JSON.stringify(row, null, 2),
+      },
+    ],
   });
 }
 
@@ -754,19 +822,30 @@ async function refreshIntegrationsCache() {
 
 async function unlockVault() {
   const passphrase = document.getElementById("vault-passphrase")?.value || "";
-  await withLoader(async () => {
-    await api("/api/vault/unlock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ passphrase }),
-    });
-    await refreshVaultStatus();
-  }, "Unlocking vault…");
+  try {
+    await withLoader(async () => {
+      await api("/api/vault/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passphrase }),
+      });
+      await refreshVaultStatus();
+    }, "Unlocking vault…");
+    if (typeof showActionSuccess === "function") showActionSuccess("Vault unlocked.");
+  } catch (err) {
+    if (typeof showActionError === "function") showActionError(err.message, { title: "Vault unlock failed" });
+    else alert(`Unlock failed: ${err.message}`);
+  }
 }
 
 async function lockVault() {
-  await api("/api/vault/lock", { method: "POST" });
-  await refreshVaultStatus();
+  try {
+    await api("/api/vault/lock", { method: "POST" });
+    await refreshVaultStatus();
+    if (typeof showActionSuccess === "function") showActionSuccess("Vault locked.");
+  } catch (err) {
+    if (typeof showActionError === "function") showActionError(err.message, { title: "Vault lock failed" });
+  }
 }
 
 async function initVault() {
@@ -776,15 +855,21 @@ async function initVault() {
     alert("Initial passphrase is required.");
     return;
   }
-  await withLoader(async () => {
-    await api("/api/vault/init", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ passphrase, alias }),
-    });
-    document.getElementById("vault-init-passphrase").value = "";
-    await refreshVaultStatus();
-  }, "Initializing vault…");
+  try {
+    await withLoader(async () => {
+      await api("/api/vault/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passphrase, alias }),
+      });
+      document.getElementById("vault-init-passphrase").value = "";
+      await refreshVaultStatus();
+    }, "Initializing vault…");
+    if (typeof showActionSuccess === "function") showActionSuccess("Vault initialized.");
+  } catch (err) {
+    if (typeof showActionError === "function") showActionError(err.message, { title: "Vault init failed" });
+    else alert(`Init failed: ${err.message}`);
+  }
 }
 
 async function addVaultWrap() {
@@ -827,14 +912,20 @@ async function addVaultEntry() {
     workgroup: document.getElementById("vault-entry-workgroup")?.value || "",
     notes: document.getElementById("vault-entry-notes")?.value || "",
   };
-  await withLoader(async () => {
-    await api("/api/vault/entries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    await refreshVaultStatus();
-  }, "Adding vault entry…");
+  try {
+    await withLoader(async () => {
+      await api("/api/vault/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      await refreshVaultStatus();
+    }, "Adding vault entry…");
+    if (typeof showActionSuccess === "function") showActionSuccess(`Vault entry “${body.name || "entry"}” added.`);
+  } catch (err) {
+    if (typeof showActionError === "function") showActionError(err.message, { title: "Add vault entry failed" });
+    else alert(`Add entry failed: ${err.message}`);
+  }
 }
 
 window.initIntegrationsPanel = initIntegrationsPanel;

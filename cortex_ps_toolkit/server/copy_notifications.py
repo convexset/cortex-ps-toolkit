@@ -105,13 +105,74 @@ def maybe_publish_item_copied_from_progress(
     )
 
 
+def publish_batch_copy_complete_notification(
+    result: dict[str, Any],
+    *,
+    source: str,
+    target: str,
+    title: str = "Copy",
+    auto_dismiss_ms: int = 0,
+) -> None:
+    """Summary banner after a standard batch copy (lists, scripts, playbooks, IOCs, …)."""
+    results = result.get("results") or []
+    ok = sum(1 for row in results if copy_entry_succeeded(row))
+    failed = [row for row in results if row.get("status") == "failed"]
+    skipped = sum(
+        1
+        for row in results
+        if row.get("status") in ("skipped", "conflict", "blocked") or row.get("action") in ("skip", "conflict")
+    )
+    route = f"{source} → {target}" if source and target else ""
+    level = "success" if ok and not failed else "warning" if ok else "error"
+    message = f"{route}: {title.lower()} finished — {ok} copied/updated"
+    if skipped:
+        message += f", {skipped} skipped"
+    if failed:
+        message += f", {len(failed)} failed"
+    publish_notification(message, level=level, title=title, auto_dismiss_ms=auto_dismiss_ms)
+
+
+def publish_deep_copy_complete_notification(
+    result: dict[str, Any],
+    *,
+    source: str,
+    target: str,
+    title: str = "Deep playbook copy",
+    auto_dismiss_ms: int = 0,
+) -> None:
+    if result.get("aborted"):
+        publish_notification(
+            result.get("reason") or "Deep playbook copy was aborted.",
+            level="error",
+            title=title,
+            auto_dismiss_ms=0,
+        )
+        return
+    script_results = result.get("script_results") or []
+    playbook_results = result.get("playbook_results") or []
+    scripts_ok = sum(1 for row in script_results if row.get("status") in ("copied", "updated", "skipped"))
+    playbooks_ok = sum(1 for row in playbook_results if row.get("status") in ("copied", "updated", "skipped"))
+    failed = [row for row in playbook_results if row.get("status") == "failed"]
+    binding_issues = result.get("binding_issues") or []
+    level = "success" if not failed and not binding_issues else "error"
+    message = (
+        f"{source} → {target}: deep copy finished — "
+        f"{scripts_ok} script(s), {playbooks_ok} playbook(s) processed."
+    )
+    if failed:
+        message += f" {len(failed)} playbook(s) failed."
+    if binding_issues:
+        message += f" {len(binding_issues)} binding issue(s)."
+    publish_notification(message, level=level, title=title, auto_dismiss_ms=auto_dismiss_ms)
+
+
 def publish_object_bundle_complete_notification(
     result: dict[str, Any],
     *,
     source: str,
     target: str,
     title: str = "Object Bundle copy",
-    auto_dismiss_ms: int = 5000,
+    auto_dismiss_ms: int = 0,
 ) -> None:
     """Publish a summary toast after Object Bundle copy without re-listing each item."""
     copied = copied_item_labels(result)

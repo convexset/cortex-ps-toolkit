@@ -1,4 +1,4 @@
-"""Resolve playbook task bindings before YAML upload (aligned with bay/playbook-utils)."""
+"""Resolve playbook task bindings before YAML upload (aligned with playbook-utils)."""
 
 from __future__ import annotations
 

@@ -12,8 +12,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8770)
     parser.add_argument("--reload", action="store_true", help="Auto-reload on Python changes")
     parser.add_argument("--debug", action="store_true", help="Verbose errors and logging")
+    parser.add_argument(
+        "--config",
+        metavar="PATH",
+        help="Server config file (JSON or YAML); sets CORTEX_PS_SERVER_CONFIG",
+    )
     args = parser.parse_args(argv)
 
+    if args.config:
+        os.environ["CORTEX_PS_SERVER_CONFIG"] = str(args.config)
     if args.debug:
         os.environ["CORTEX_PS_DEBUG"] = "1"
 

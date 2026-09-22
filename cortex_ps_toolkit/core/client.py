@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Mapping, Optional
 
 import requests
 
 from ..credentials import CredentialProfile
+from ..ops_log import log_api_request, log_api_response, op_error, op_info
 from ..platforms import Platform
 from .paths import XSOAR_PUBLIC_V1_PREFIX, xsoar_shaped_path
 
@@ -89,6 +91,7 @@ class TenantClient:
             body = response.json()
         except Exception:
             body = response.text[:2000]
+        op_error("%s failed: HTTP %s", action, response.status_code)
         raise TenantApiError(
             f"{action} failed: HTTP {response.status_code} {body!r}",
             status_code=response.status_code,
@@ -104,14 +107,39 @@ class TenantClient:
         json: Optional[Mapping[str, Any]] = None,
         timeout: Optional[float] = None,
     ) -> requests.Response:
-        response = self.session.request(
-            method.upper(),
-            url,
-            json=json,
-            headers={"Content-Type": "application/json"} if json is not None else None,
-            timeout=timeout or self.timeout,
-            allow_redirects=False,
-        )
+        verb = method.upper()
+        started = time.monotonic()
+        op_info("%s — started", action)
+        log_api_request(verb, url, action, request=json)
+        try:
+            response = self.session.request(
+                verb,
+                url,
+                json=json,
+                headers={"Content-Type": "application/json"} if json is not None else None,
+                timeout=timeout or self.timeout,
+                allow_redirects=False,
+            )
+        except Exception:
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            op_error("%s — failed after %dms", action, elapsed_ms)
+            raise
+        body_preview: Any = None
+        if response.content:
+            try:
+                body_preview = response.json()
+            except Exception:
+                content_type = str(response.headers.get("Content-Type") or "").lower()
+                if "json" in content_type or "text" in content_type or "xml" in content_type:
+                    body_preview = response.text if response.text else None
+                else:
+                    body_preview = f"<binary response, {len(response.content)} bytes>"
+        log_api_response(verb, url, action, response=body_preview, status_code=response.status_code)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        if response.ok:
+            op_info("%s — completed in %dms (HTTP %s)", action, elapsed_ms, response.status_code)
+        else:
+            op_error("%s — failed after %dms (HTTP %s)", action, elapsed_ms, response.status_code)
         self._raise_for_status(response, action)
         return response
 
@@ -170,14 +198,39 @@ class TenantClient:
         files: Mapping[str, tuple[str, bytes, str]],
         timeout: Optional[float] = None,
     ) -> tuple[Any, int]:
+        file_names = {key: meta[0] for key, meta in files.items()}
+        started = time.monotonic()
+        op_info("%s — started", action)
+        log_api_request("POST", url, action, request={"multipart_files": file_names})
         headers = {k: v for k, v in self.session.headers.items() if k.lower() != "content-type"}
-        response = self.session.post(
-            url,
-            files=files,
-            headers=headers,
-            timeout=timeout or self.timeout,
-            allow_redirects=False,
-        )
+        try:
+            response = self.session.post(
+                url,
+                files=files,
+                headers=headers,
+                timeout=timeout or self.timeout,
+                allow_redirects=False,
+            )
+        except Exception:
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            op_error("%s — failed after %dms", action, elapsed_ms)
+            raise
+        body_preview: Any = None
+        if response.content:
+            try:
+                body_preview = response.json()
+            except Exception:
+                content_type = str(response.headers.get("Content-Type") or "").lower()
+                if "json" in content_type or "text" in content_type or "xml" in content_type:
+                    body_preview = response.text if response.text else None
+                else:
+                    body_preview = f"<binary response, {len(response.content)} bytes>"
+        log_api_response("POST", url, action, response=body_preview, status_code=response.status_code)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        if response.ok:
+            op_info("%s — completed in %dms (HTTP %s)", action, elapsed_ms, response.status_code)
+        else:
+            op_error("%s — failed after %dms (HTTP %s)", action, elapsed_ms, response.status_code)
         self._raise_for_status(response, action)
         return self._response_json(response), response.status_code
 

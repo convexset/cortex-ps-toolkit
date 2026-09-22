@@ -161,6 +161,10 @@ Preflight: resolve names/ids on target; report conflicts; optional dry-run manif
 
 See §5 below (same capability, launched from Playbook Tools toolbar).
 
+**Read path (validate, preview, update-tasks preview):** playbook JSON comes only from toolkit cache (`playbooks/bodies/` + index). Missing bodies → 404 with refresh guidance; no playbook-utils bulk search.
+
+**Execute:** seeds an isolated playbook-utils job cache from toolkit bodies, then runs `extract-multi` (tenant uploads/compare only).
+
 ---
 
 ## 5. Playbook listing and exploded metrics (detail)
@@ -173,9 +177,9 @@ See §5 below (same capability, launched from Playbook Tools toolbar).
 
 ### Data sources
 
-- Cached playbook JSON under `data/cache/.../playbooks/`
+- Playbook **index** and **bodies** under `data/cache/.../playbooks/` (see [`CHANGELOG-post-initial-commit.md`](CHANGELOG-post-initial-commit.md))
 - Metrics library: [`ai/scripts/xsoar_playbook_metrics.py`](../../ai/scripts/xsoar_playbook_metrics.py)
-- Tree walk pattern: [`bay/playbook-utils/playbook_utils/playbook_tree.py`](../../bay/playbook-utils/playbook_utils/playbook_tree.py)
+- Tree walk pattern: [`playbook-utils/playbook_utils/playbook_tree.py`](../../playbook-utils/playbook_utils/playbook_tree.py)
 
 ### Exploded view model
 
@@ -208,7 +212,7 @@ Combined workflow metrics: reachable automated / total across tree
 
 ## 6. Playbook refactoring
 
-Port behaviour from [`bay/playbook-utils`](../../bay/playbook-utils/) — see its AGENTS.md § Extract pipeline and § Refactor descriptions.
+Port behaviour from [`playbook-utils`](../../playbook-utils/) — see its AGENTS.md § Extract pipeline and § Refactor descriptions.
 
 ### Capabilities
 

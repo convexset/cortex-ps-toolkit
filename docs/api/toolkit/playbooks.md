@@ -18,6 +18,22 @@ Analyze a playbook and reachable sub-playbooks from the tenant cache.
 
 **Response `200`:** structure tree, task breakdown, `scripts_used`, `commands_used`, `copy_scope` (playbook/script ids for component copy), `missing_sub_playbooks`, `notes` (structured warnings/info), `warnings` (flat warning strings for CLI/copy preview).
 
+Optional query/body flags (CLI and WebSocket `playbooks.analyze`): `cache_only`, `skip_cache_refresh` — skips elective **index** refresh; missing playbook YAML and script bodies are still downloaded in parallel from the tenant before analysis runs (see `analysis_body_fetch.ensure_analysis_downloads`).
+
+## GET /api/playbooks/{playbook_id}/analysis/fetch-plan?profile={slug}
+
+Classifies playbook body availability before analysis: counts of index entries vs on-disk bodies, per-id reasons (`missing_file`, `modified_mismatch`, `not_in_index`, …). Used by the analysis panel to show fetch toasts and drive body download progress.
+
+## POST /api/playbooks/refactor/validate-extract
+
+**Request:** `{ "profile", "playbook_id", "kind": "leaf"|"cluster", "task_id" | ("start_id","end_id"), "other_leaf_tasks"?: [] }`
+
+**Response `200`:** `{ "ok", "reasons", … }` from playbook-utils graph rules.
+
+**Cache:** Reads playbook JSON from `data/cache/.../playbooks/bodies/` only (analysis stale policy). **404** if the body is missing — refresh Playbook Tools and re-run analysis first.
+
+**Operation:** `playbooks.refactor.validate_extract`
+
 ## POST /api/playbooks/copy-components/preview
 
 **Request:**
@@ -97,7 +113,7 @@ Run a workflow preset (clear `[REFACTOR-*]` + one or more refactor steps). Same 
 
 ## POST /api/playbooks/refactor/preview
 
-Preflight combined refactor (leaf + cluster extracts + optional post-task error-handling specs). **No tenant uploads.**
+Preflight combined refactor (leaf + cluster extracts + optional post-task error-handling specs). **No tenant uploads.** Source playbook loaded from toolkit body cache only; response includes `"cache_only": true`.
 
 **Request:**
 
@@ -113,7 +129,7 @@ Preflight combined refactor (leaf + cluster extracts + optional post-task error-
 }
 ```
 
-**Response:** `ok`, `reasons`, `extractions[]` with planned `[REFACTOR-S]` / `[REFACTOR-M]` sub-playbook names, `parent_copy_name`.
+**Response:** `ok`, `reasons`, `extractions[]` with planned `[REFACTOR-S]` / `[REFACTOR-M]` sub-playbook names, `parent_copy_name`, `existing_targets[]` (tenant cache index hits for those names), `overwrite_required`.
 
 **CLI:** `playbooks refactor-preview --profile … --id … --task 366 --cluster 21:52 --post-task-update '…'`
 
@@ -125,13 +141,15 @@ Preflight combined refactor (leaf + cluster extracts + optional post-task error-
 
 ## POST /api/playbooks/refactor/execute
 
-Runs full `extract-multi`: upload subs, round-trip compare, optional `--post-task-update` on generated subs, refactor descriptions, parent copy upload.
+Runs full `extract-multi` (parallel path): **(1)** upload subs in parallel (default **10** upload workers; sub **descriptions included in this YAML**), **(2)** cache refresh, **(3)** sub round-trip compare, **(4)** parent copy upload, **(5)** cache refresh, then optional **post-task updates** (single batch refresh) and **parent** refactor description (in memory / metrics artifacts; no second sub description upload). Legacy `--compare-after-parent` defers step 3 until after the parent upload.
 
-Same request body as preview, plus optional flags: `damp_run`, `upload_only`, `upload_parent_on_mismatch`, `require_match`, `force`.
+Same request body as preview, plus optional flags: `damp_run`, `upload_only`, `upload_parent_on_mismatch`, `require_match`, `force`, `overwrite_existing`, `overwrite_confirmed`.
+
+`overwrite_existing` defaults to **true** when omitted. When it is true and `existing_targets` is non-empty, the server requires `overwrite_confirmed: true` (UI shows a second confirmation dialog). Overwrite replaces sub-playbooks and the parent copy in place via save/yaml (`prepare_for_overwrite`). At execute time, preflight `existing_targets` (id + name from the toolkit playbooks index) are seeded into the isolated job cache so Phase 1 uploads stamp tenant UUIDs via **index-only** lookup—no per-sub tenant GET or bulk search refresh before all uploads finish. Set `overwrite_existing: false` (UI: uncheck Advanced → overwrite) to reuse same-name playbooks without replacing content — upload may report “already exists” and compare uses the existing body.
 
 **CLI:** `playbooks refactor …`
 
-**Tenant API:** `POST …/playbook/save/yaml` (via bay/playbook-utils).
+**Tenant API:** `POST …/playbook/save/yaml` (via playbook-utils).
 
 **UI:** Playbook Tools → Analyze → **Refactor** section. Load presets, preview via HTTP, **Run refactor** streams `job.progress` over WebSocket (falls back to HTTP if WS disconnected).
 
@@ -169,7 +187,7 @@ Same body as preview; optional `dry_run`, `force`. Overwrites existing playbook 
 
 **CLI:** `playbooks update-tasks …`
 
-Reference: [`bay/playbook-utils/AGENTS.md`](../../../../bay/playbook-utils/AGENTS.md)
+Reference: [`playbook-utils/AGENTS.md`](../../../../playbook-utils/AGENTS.md)
 
 ---
 

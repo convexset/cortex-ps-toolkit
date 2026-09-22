@@ -208,6 +208,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         argv.append("--reload")
     if args.debug:
         argv.append("--debug")
+    if getattr(args, "config", None):
+        argv.extend(["--config", args.config])
     return serve_main(argv[1:])
 
 
@@ -277,6 +279,8 @@ def _cmd_playbooks_refactor_execute(args: argparse.Namespace) -> int:
         upload_parent_on_mismatch=args.upload_parent_on_mismatch,
         require_match=args.require_match,
         force=args.force,
+        overwrite_existing=not args.no_overwrite_existing,
+        overwrite_confirmed=args.overwrite_confirmed,
     )
     print_json(payload)
     return int(payload.get("exit_code") or (0 if payload.get("ok") else 2))
@@ -673,6 +677,21 @@ def build_parser() -> argparse.ArgumentParser:
         refactor_run.add_argument("--upload-parent-on-mismatch", action="store_true")
         refactor_run.add_argument("--require-match", action="store_true")
         refactor_run.add_argument("--force", action="store_true")
+        refactor_run.add_argument(
+            "--no-overwrite-existing",
+            action="store_true",
+            help="Reuse same-name playbooks on the tenant without replacing content (default: overwrite)",
+        )
+        refactor_run.add_argument(
+            "--overwrite-existing",
+            action="store_true",
+            help="Explicitly enable overwrite (default without --no-overwrite-existing)",
+        )
+        refactor_run.add_argument(
+            "--overwrite-confirmed",
+            action="store_true",
+            help="Required when preview lists existing_targets and overwrite is enabled",
+        )
         refactor_run.set_defaults(func=_cmd_playbooks_refactor_execute)
 
         update_preview = nested.add_parser(
@@ -830,6 +849,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8770)
     serve.add_argument("--reload", action="store_true")
     serve.add_argument("--debug", action="store_true")
+    serve.add_argument(
+        "--config",
+        metavar="PATH",
+        help="Server config file (JSON or YAML); sets CORTEX_PS_SERVER_CONFIG",
+    )
     serve.set_defaults(func=_cmd_serve)
 
     platforms = sub.add_parser("platforms", help="Platform docs and operation support matrix")

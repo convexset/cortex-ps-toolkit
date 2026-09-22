@@ -30,8 +30,37 @@ function initObjectSetupUi() {
     items: [],
   };
 
+  let lastCacheStatus = null;
+
   function activeProfile() {
     return document.getElementById("active-profile").value;
+  }
+
+  async function loadCacheStatus(profile) {
+    if (!profile || typeof api !== "function") return null;
+    try {
+      lastCacheStatus = await api(`/api/cache/status?profile=${encodeURIComponent(profile)}`);
+      return lastCacheStatus;
+    } catch (_err) {
+      return lastCacheStatus;
+    }
+  }
+
+  function updateObjectSetupMeta(data) {
+    const metaEl = document.getElementById("object-setup-meta");
+    if (!metaEl) return;
+    const tooltip =
+      typeof formatObjectSetupCachesTooltip === "function" && lastCacheStatus
+        ? formatObjectSetupCachesTooltip(lastCacheStatus)
+        : "";
+    if (typeof setCacheMetaElement === "function") {
+      setCacheMetaElement(metaEl, data, assetLabel(activeAsset), { tooltip });
+      return;
+    }
+    metaEl.textContent =
+      typeof formatCacheMetaLine === "function"
+        ? formatCacheMetaLine(data, assetLabel(activeAsset))
+        : `${data.count || 0} item(s)`;
   }
 
   function isAdminAsset() {
@@ -198,12 +227,192 @@ function initObjectSetupUi() {
       source_profile: source,
       target_profile: target,
       selections,
-      overwrite: document.getElementById("object-setup-copy-overwrite")?.checked,
-      stop_on_conflict: document.getElementById("object-setup-copy-stop")?.checked,
+      overwrite: document.getElementById("object-setup-bundle-overwrite")?.checked,
+      stop_on_conflict: document.getElementById("object-setup-bundle-stop")?.checked,
       include_correlation_rules: correlation_rule_names.length > 0,
       correlation_rule_names,
       designIds,
     };
+  }
+
+  function workflowItemsForSave() {
+    return workflowBasket.items.map((item) => ({
+      asset: item.asset,
+      id: item.id,
+      name: item.name,
+      type: item.type,
+    }));
+  }
+
+  function applyResolvedBundleItems(items) {
+    workflowBasket.items = (items || []).map((item) => ({
+      key: workflowItemKey(item.asset, String(item.id)),
+      asset: item.asset,
+      id: String(item.id),
+      name: item.name || String(item.id),
+      type: item.type || assetLabel(item.asset),
+    }));
+    renderWorkflowSummary();
+  }
+
+  async function refreshSavedBundles() {
+    const select = document.getElementById("object-setup-bundle-preset");
+    const source = activeProfile();
+    if (!select || typeof api !== "function") {
+      return;
+    }
+    if (!source) {
+      select.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "— select source profile —";
+      select.appendChild(placeholder);
+      return;
+    }
+    try {
+      const data = await api(`/api/object-setup/bundles?profile=${encodeURIComponent(source)}`);
+      const bundles = data.bundles || [];
+      const current = select.value;
+      select.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "— select —";
+      select.appendChild(placeholder);
+      for (const bundle of bundles) {
+        const option = document.createElement("option");
+        option.value = bundle.id;
+        option.textContent = bundle.name || bundle.id;
+        option.dataset.name = bundle.name || bundle.id;
+        select.appendChild(option);
+      }
+      if (current && [...select.options].some((opt) => opt.value === current)) {
+        select.value = current;
+      } else {
+        select.value = "";
+      }
+    } catch (err) {
+      console.warn("Could not load saved bundles:", err);
+    }
+  }
+
+  async function saveCurrentBundle() {
+    const name = document.getElementById("object-setup-bundle-id")?.value?.trim();
+    const source = activeProfile();
+    if (!name) {
+      alert("Enter a bundle identifier to save (unique on this source tenant).");
+      return;
+    }
+    if (!workflowItemCount()) {
+      alert("Add items to the bundle before saving.");
+      return;
+    }
+    if (!source) {
+      alert("Select a source profile.");
+      return;
+    }
+    try {
+      const entry = await withLoader(
+        () =>
+          api("/api/object-setup/bundles", {
+            method: "POST",
+            body: JSON.stringify({
+              name,
+              source_profile: source,
+              items: workflowItemsForSave(),
+            }),
+          }),
+        "Saving bundle…",
+      );
+      await refreshSavedBundles();
+      if (entry?.id) {
+        document.getElementById("object-setup-bundle-preset").value = entry.id;
+      }
+      if (typeof showActionSuccess === "function") {
+        showActionSuccess(`Saved bundle “${entry.name || name}” on ${source}.`, { title: "Bundle saved" });
+      }
+    } catch (err) {
+      if (typeof showActionError === "function") showActionError(err.message, { title: "Save bundle failed" });
+      else alert(`Save bundle failed: ${err.message}`);
+    }
+  }
+
+  async function loadSelectedBundle() {
+    const bundleId = document.getElementById("object-setup-bundle-preset")?.value;
+    const source = activeProfile();
+    if (!bundleId) {
+      alert("Select a saved bundle to load.");
+      return;
+    }
+    if (!source) {
+      alert("Select a source profile.");
+      return;
+    }
+    try {
+      const preset = await api(
+        `/api/object-setup/bundles/${encodeURIComponent(bundleId)}?profile=${encodeURIComponent(source)}`,
+      );
+      document.getElementById("object-setup-bundle-id").value = preset.name || preset.id || "";
+      const resolved = await withLoader(
+        () =>
+          api("/api/object-setup/bundles/resolve", {
+            method: "POST",
+            body: JSON.stringify({ profile: source, items: preset.items || [] }),
+          }),
+        "Resolving bundle on source tenant…",
+      );
+      applyResolvedBundleItems(resolved.items || []);
+      if (resolved.missing_count) {
+        const missingLines = (resolved.missing || [])
+          .slice(0, 8)
+          .map((item) => `${assetLabel(item.asset)} · ${item.name}`)
+          .join("\n");
+        alert(
+          `Loaded ${resolved.resolved_count} item(s). ${resolved.missing_count} could not be matched on this source tenant by id or name:\n${missingLines}`,
+        );
+      } else if (typeof showActionSuccess === "function") {
+        showActionSuccess(`Loaded ${resolved.resolved_count} item(s) from “${preset.name}”.`, { title: "Bundle loaded" });
+      }
+    } catch (err) {
+      if (typeof showActionError === "function") showActionError(err.message, { title: "Load bundle failed" });
+      else alert(`Load bundle failed: ${err.message}`);
+    }
+  }
+
+  async function deleteSelectedBundle() {
+    const bundleId = document.getElementById("object-setup-bundle-preset")?.value;
+    if (!bundleId) {
+      alert("Select a saved bundle to delete.");
+      return;
+    }
+    const proceed = await showConfirmDialog({
+      title: "Delete saved bundle",
+      message: "Remove this saved bundle preset from local storage?",
+      proceedLabel: "Delete",
+    });
+    if (!proceed) return;
+    try {
+      const source = activeProfile();
+      await api(
+        `/api/object-setup/bundles/${encodeURIComponent(bundleId)}?profile=${encodeURIComponent(source)}`,
+        { method: "DELETE" },
+      );
+      document.getElementById("object-setup-bundle-preset").value = "";
+      await refreshSavedBundles();
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`);
+    }
+  }
+
+  function bindBundleCopyOptionExclusivity() {
+    const overwriteEl = document.getElementById("object-setup-bundle-overwrite");
+    const stopEl = document.getElementById("object-setup-bundle-stop");
+    if (!overwriteEl || !stopEl) return;
+    overwriteEl.addEventListener("change", () => {
+      if (overwriteEl.checked) stopEl.checked = false;
+    });
+    stopEl.addEventListener("change", () => {
+      if (stopEl.checked) overwriteEl.checked = false;
+    });
   }
 
   async function loadCapabilities() {
@@ -225,17 +434,17 @@ function initObjectSetupUi() {
 
   function initGrid() {
     table = new Tabulator("#object-setup-grid", {
-      height: "360px",
+      height: typeof cptkGridHeight === "function" ? cptkGridHeight("compact") : "320px",
       layout: "fitColumns",
       selectableRows: true,
       placeholder: "No cached items — click Refresh cache",
-      columns: [
+      columns: cptkEnhanceColumns([
         { formatter: "rowSelection", hozAlign: "center", headerSort: false, width: 44, frozen: true, title: "" },
         { title: "ID", field: "id", minWidth: 180 },
         { title: "Name", field: "name", minWidth: 160 },
         { title: "Type", field: "type", width: 120 },
         { title: "Pack / Role", field: "packID", width: 120, formatter: (cell) => cell.getValue() || cell.getRow().getData().role || "" },
-      ],
+      ]),
     });
     table.on("rowSelectionChanged", updateSelectionCount);
     const searchInput = document.getElementById("object-setup-search");
@@ -256,6 +465,8 @@ function initObjectSetupUi() {
     }
     document.getElementById("object-setup-meta").textContent = "Loading…";
     updateActionControls();
+    await loadCacheStatus(profile);
+    await refreshSavedBundles();
     try {
       const url = isAdminAsset()
         ? `/api/platform-admin/${encodeURIComponent(activeAsset)}?profile=${encodeURIComponent(profile)}`
@@ -268,10 +479,7 @@ function initObjectSetupUi() {
       } else {
         table.deselectRow();
       }
-      const metaLine = typeof formatCacheMetaLine === "function"
-        ? formatCacheMetaLine(data, activeAsset)
-        : `${data.count || 0} item(s) · ${data.refreshed_at ? `Cached ${formatLocalDateTime(data.refreshed_at)}` : "Not cached yet"}`;
-      document.getElementById("object-setup-meta").textContent = metaLine;
+      updateObjectSetupMeta(data);
       updateSelectionCount();
     } catch (err) {
       document.getElementById("object-setup-meta").textContent = `Error: ${err.message}`;
@@ -312,6 +520,7 @@ function initObjectSetupUi() {
           refreshMessage,
         );
       }
+      await loadCacheStatus(profile);
       await loadForActiveProfile();
       return data;
     } catch (err) {
@@ -354,7 +563,9 @@ function initObjectSetupUi() {
       );
       const proceed = await showConfirmDialog({
         title: "Copy correlation rules",
-        message: JSON.stringify(preview.entries, null, 2),
+        message: typeof formatPreviewEntries === "function"
+          ? formatPreviewEntries(preview, { title: "Copy correlation rules", itemLabel: "rule" })
+          : JSON.stringify(preview.entries, null, 2),
         proceedLabel: "Copy",
       });
       if (!proceed) return;
@@ -368,10 +579,12 @@ function initObjectSetupUi() {
           busyButton: triggerButton,
           busyLabel: "Copying…",
         });
-        document.getElementById("object-setup-action-result").textContent = JSON.stringify(result, null, 2);
-        document.getElementById("object-setup-action-result").classList.remove("hidden");
+        if (typeof showActionOutcome === "function") {
+          showActionOutcome("object-setup-action-result", result, { itemLabel: "rule", operation: "copy" });
+        }
       } catch (err) {
-        alert(`Copy failed: ${err.message}`);
+        if (typeof showActionError === "function") showActionError(err.message, { title: "Copy failed" });
+        else alert(`Copy failed: ${err.message}`);
       }
       return;
     }
@@ -389,6 +602,15 @@ function initObjectSetupUi() {
       overwrite,
       stop_on_conflict: stopOnConflict,
     };
+    if (typeof promptStaleCacheChoice === "function") {
+      const cacheChoice = await promptStaleCacheChoice([
+        { profile: source, designAssets: [activeAsset] },
+        { profile: target, designAssets: [activeAsset] },
+      ]);
+      if (cacheChoice === "cancel") {
+        return;
+      }
+    }
     const preview = await withLoader(
       () => api(`/api/design-content/${encodeURIComponent(activeAsset)}/copy/preview`, {
         method: "POST",
@@ -398,7 +620,9 @@ function initObjectSetupUi() {
     );
     const proceed = await showConfirmDialog({
       title: "Copy object setup content",
-      message: JSON.stringify(preview.entries, null, 2),
+      message: typeof formatPreviewEntries === "function"
+        ? formatPreviewEntries(preview, { title: "Copy object setup content", itemLabel: activeAsset })
+        : JSON.stringify(preview.entries, null, 2),
       proceedLabel: "Copy",
     });
     if (!proceed) return;
@@ -412,10 +636,12 @@ function initObjectSetupUi() {
         busyButton: triggerButton,
         busyLabel: "Copying…",
       });
-      document.getElementById("object-setup-action-result").textContent = JSON.stringify(result, null, 2);
-      document.getElementById("object-setup-action-result").classList.remove("hidden");
+      if (typeof showActionOutcome === "function") {
+        showActionOutcome("object-setup-action-result", result, { itemLabel: "item", operation: "copy" });
+      }
     } catch (err) {
-      alert(`Copy failed: ${err.message}`);
+      if (typeof showActionError === "function") showActionError(err.message, { title: "Copy failed" });
+      else alert(`Copy failed: ${err.message}`);
     }
   }
 
@@ -435,7 +661,9 @@ function initObjectSetupUi() {
       });
       const proceed = await showConfirmDialog({
         title: "Delete correlation rules",
-        message: JSON.stringify(preview.entries, null, 2),
+        message: typeof formatPreviewEntries === "function"
+          ? formatPreviewEntries(preview, { title: "Delete correlation rules", itemLabel: "rule" })
+          : JSON.stringify(preview.entries, null, 2),
         proceedLabel: "Delete",
       });
       if (!proceed) return;
@@ -455,11 +683,13 @@ function initObjectSetupUi() {
             "Deleting…",
           );
         }
-        document.getElementById("object-setup-action-result").textContent = JSON.stringify(result, null, 2);
-        document.getElementById("object-setup-action-result").classList.remove("hidden");
+        if (typeof showActionOutcome === "function") {
+          showActionOutcome("object-setup-action-result", result, { itemLabel: "rule", operation: "delete" });
+        }
         await refreshCache();
       } catch (err) {
-        alert(`Delete failed: ${err.message}`);
+        if (typeof showActionError === "function") showActionError(err.message, { title: "Delete failed" });
+        else alert(`Delete failed: ${err.message}`);
       } finally {
         opProgress.clear();
       }
@@ -477,7 +707,9 @@ function initObjectSetupUi() {
     });
     const proceed = await showConfirmDialog({
       title: "Delete object setup content",
-      message: JSON.stringify(preview.entries, null, 2),
+      message: typeof formatPreviewEntries === "function"
+        ? formatPreviewEntries(preview, { title: "Delete object setup content", itemLabel: activeAsset })
+        : JSON.stringify(preview.entries, null, 2),
       proceedLabel: "Delete",
     });
     if (!proceed) return;
@@ -500,11 +732,13 @@ function initObjectSetupUi() {
           "Deleting…",
         );
       }
-      document.getElementById("object-setup-action-result").textContent = JSON.stringify(result, null, 2);
-      document.getElementById("object-setup-action-result").classList.remove("hidden");
+      if (typeof showActionOutcome === "function") {
+        showActionOutcome("object-setup-action-result", result, { itemLabel: "item", operation: "delete" });
+      }
       await refreshCache();
     } catch (err) {
-      alert(`Delete failed: ${err.message}`);
+      if (typeof showActionError === "function") showActionError(err.message, { title: "Delete failed" });
+      else alert(`Delete failed: ${err.message}`);
     } finally {
       opProgress.clear();
     }
@@ -541,12 +775,14 @@ function initObjectSetupUi() {
         busyButton: triggerButton,
         busyLabel: "Copying Object Bundle…",
       });
-      document.getElementById("object-setup-action-result").textContent = JSON.stringify(result, null, 2);
-      document.getElementById("object-setup-action-result").classList.remove("hidden");
+      if (typeof showActionOutcome === "function") {
+        showActionOutcome("object-setup-action-result", result, { itemLabel: "bundle item", operation: "copy" });
+      }
       workflowBasket.items = [];
       renderWorkflowSummary();
     } catch (err) {
-      alert(`Object Bundle copy failed: ${err.message}`);
+      if (typeof showActionError === "function") showActionError(err.message, { title: "Object Bundle copy failed" });
+      else alert(`Object Bundle copy failed: ${err.message}`);
     }
   }
 
@@ -579,18 +815,40 @@ function initObjectSetupUi() {
       workflowBasket.items = [];
       renderWorkflowSummary();
     });
-    document.getElementById("object-setup-select-none")?.addEventListener("click", () => {
-      if (gridSearch) gridSearch.clearSelection();
-      else table?.deselectRow();
-      updateSelectionCount();
+    document.getElementById("object-setup-save-bundle")?.addEventListener("click", () => {
+      void saveCurrentBundle();
     });
+    document.getElementById("object-setup-load-bundle")?.addEventListener("click", () => {
+      void loadSelectedBundle();
+    });
+    document.getElementById("object-setup-delete-bundle")?.addEventListener("click", () => {
+      void deleteSelectedBundle();
+    });
+    document.getElementById("object-setup-bundle-preset")?.addEventListener("change", () => {
+      const select = document.getElementById("object-setup-bundle-preset");
+      const option = select?.selectedOptions?.[0];
+      if (!option?.value) return;
+      document.getElementById("object-setup-bundle-id").value = option.dataset.name || option.value || "";
+    });
+    bindBundleCopyOptionExclusivity();
+    if (typeof bindGridSelectionToolbar === "function") {
+      bindGridSelectionToolbar({
+        table,
+        search: gridSearch,
+        visibleBtnId: "object-setup-select-all-visible",
+        allBtnId: "object-setup-select-all",
+        noneBtnId: "object-setup-select-none",
+        onSelectionChange: updateSelectionCount,
+      });
+    }
   }
 
   initGrid();
   bindAssetTabs();
   bindControls();
   renderWorkflowSummary();
-  return { loadForActiveProfile };
+  void refreshSavedBundles();
+  return { loadForActiveProfile, refreshSavedBundles };
 }
 
 window.initObjectSetupUi = initObjectSetupUi;

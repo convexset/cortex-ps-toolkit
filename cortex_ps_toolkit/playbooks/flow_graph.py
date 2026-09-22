@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any, Mapping, Optional
 
 from ..content.yaml_codec import dumps_yaml
 from .entity_resolution import integration_command_from_task, resolve_automation_script
-from .graph import _reachable_nodes, build_expanded_graph
+from .graph import ExpandedGraphContext, build_expanded_graph_context
 from .resolver import CachePlaybookResolver
 from .yaml_export import rename_playbook_keys_for_yaml
 from .yaml_helpers import (
@@ -153,7 +152,6 @@ def build_playbook_flow_graph(
             script_by_id=script_by_id,
             script_by_name=script_by_name,
         )
-        task_copy = copy.deepcopy(node)
         nodes.append({
             "id": str(task_id),
             "task_type": task_type,
@@ -161,8 +159,8 @@ def build_playbook_flow_graph(
             "detail": detail,
             "reachable": str(task_id) in reachable_task_ids,
             "is_start": str(task_id) == start_id or task_type == "start",
-            "raw_task": task_copy,
-            "raw_task_yaml": dumps_yaml(rename_playbook_keys_for_yaml(task_copy)),
+            "raw_task": node,
+            "raw_task_yaml": dumps_yaml(rename_playbook_keys_for_yaml(node)),
             **_task_metadata(
                 node,
                 task_type,
@@ -203,13 +201,11 @@ def build_flow_graphs_for_tree(
     *,
     script_by_id: Mapping[str, Mapping[str, Any]],
     script_by_name: Mapping[str, Mapping[str, Any]],
+    graph_context: ExpandedGraphContext | None = None,
 ) -> list[dict[str, Any]]:
     """Flow graphs for root + sub-playbooks; reachability from expanded execution graph."""
-    start, adjacency, _nodes, _keys = build_expanded_graph(root_playbook, resolver)
-    expanded_reachable = {
-        (node.playbook_key, node.task_id)
-        for node in _reachable_nodes(start, adjacency)
-    }
+    ctx = graph_context or build_expanded_graph_context(root_playbook, resolver)
+    expanded_reachable = ctx.reachable_task_keys
 
     graphs: list[dict[str, Any]] = []
     for entry in sorted(

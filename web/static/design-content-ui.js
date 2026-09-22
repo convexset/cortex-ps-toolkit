@@ -1,4 +1,8 @@
-/** Design-time content: layouts, classifiers, preprocess, incident fields/types. */
+/**
+ * @deprecated Unused in the web shell — superseded by object-setup-ui.js.
+ * Kept for reference only; not loaded from index.html.
+ * Design-time content: layouts, classifiers, preprocess, incident fields/types.
+ */
 
 const DESIGN_ASSETS = [
   "layouts",
@@ -88,13 +92,13 @@ function initDesignContentUi() {
       layout: "fitColumns",
       selectableRows: true,
       placeholder: "No cached items — click Refresh cache",
-      columns: [
+      columns: cptkEnhanceColumns([
         { formatter: "rowSelection", hozAlign: "center", headerSort: false, width: 44, frozen: true, title: "" },
         { title: "ID", field: "id", minWidth: 180 },
         { title: "Name", field: "name", minWidth: 160 },
         { title: "Type", field: "type", width: 120 },
         { title: "Pack", field: "packID", width: 120 },
-      ],
+      ]),
     });
     table.on("rowSelectionChanged", updateSelectionCount);
     const searchInput = document.getElementById("design-content-search");

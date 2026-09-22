@@ -5,14 +5,12 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ..credentials import CredentialProfile, get_profile
-from ..ops_log import op_info
 from . import api
 from .cache import find_playbook_in_index, load_playbooks_index, write_playbooks_cache
 
 
 def refresh_playbooks_cache(profile: CredentialProfile | str) -> dict[str, Any]:
     resolved = get_profile(profile) if isinstance(profile, str) else profile
-    op_info("Fetching playbooks from tenant API for %s", resolved.slug)
     playbooks_raw = api.search_playbooks(resolved)
     playbooks = [api.cache_entry_from_search(item) for item in playbooks_raw if item.get("id")]
     path = write_playbooks_cache(resolved, playbooks)

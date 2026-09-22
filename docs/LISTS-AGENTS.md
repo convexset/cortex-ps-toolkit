@@ -266,4 +266,4 @@ Live tests require gitignored credentials — use lab profiles above.
 | API index | [`api/README.md`](api/README.md) |
 | Credentials | [`CREDENTIALS_AND_CACHE.md`](CREDENTIALS_AND_CACHE.md) |
 | Web server | [`UI_AND_SERVER.md`](UI_AND_SERVER.md) |
-| Playbook refactor (similar agent pattern) | `bay/playbook-utils/AGENTS.md` |
+| Playbook refactor (similar agent pattern) | `playbook-utils/AGENTS.md` |

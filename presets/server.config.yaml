@@ -1,0 +1,18 @@
+# Cortex PS Toolkit server configuration.
+# Copy to data/server.config.yaml or set CORTEX_PS_SERVER_CONFIG to this path.
+
+# Screen logging level: DEBUG | INFO | WARN | ERROR
+server_log_level: DEBUG
+
+# Truncate serialized DEBUG payloads beyond this many characters.
+server_log_debug_truncation_threshold: 512
+
+# Elective cache TTL threshold (minutes). Caches older than this may be refreshed
+# or flagged stale for read-only operations.
+threshold_ttl_in_min: 10
+
+# Pause before refreshing target playbook cache after uploads (tenant index lag).
+copy_binding_cache_pause_seconds: 5
+
+# Extra resolve attempts (pause + cache refresh) when sub-playbook bindings are not ready.
+copy_binding_resolve_retries: 3

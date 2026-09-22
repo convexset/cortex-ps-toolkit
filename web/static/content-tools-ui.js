@@ -44,16 +44,24 @@ function initContentTools(spec) {
   function updateSelectionCount() {
     const el = document.getElementById(selectionCountId);
     if (!el) return;
-    el.textContent = `${getSelectedRows().length} selected`;
+    const count = getSelectedRows().length;
+    const pluralLabel = count === 1 ? itemLabel : `${itemLabel}s`;
+    if (el.classList.contains("selection-count-badge")) {
+      el.textContent = count === 0 ? "None selected" : `${count} ${pluralLabel} selected`;
+    } else {
+      el.textContent = `${count} selected`;
+    }
+    el.classList.toggle("has-selection", count > 0);
+    el.setAttribute("aria-label", `${count} ${pluralLabel} selected`);
   }
 
   function initGrid() {
     table = new Tabulator(gridSelector, {
-      height: "420px",
+      height: typeof cptkGridHeight === "function" ? cptkGridHeight("default") : "420px",
       layout: "fitColumns",
       selectableRows: true,
       placeholder: `No cached ${resource} — click Refresh cache`,
-      columns: [
+      columns: cptkEnhanceColumns([
         {
           formatter: "rowSelection",
           hozAlign: "center",
@@ -63,7 +71,7 @@ function initContentTools(spec) {
           title: "",
         },
         ...columns,
-      ],
+      ]),
     });
     table.on("rowSelectionChanged", updateSelectionCount);
     if (enableRowView) {
@@ -398,6 +406,8 @@ function initContentTools(spec) {
       const copyProgress = createOperationProgress(`Copy ${resource}`);
       const data = await copyProgress.runCopy({
         startMessage: `Copying ${itemIds.length} ${itemLabel}(s) to ${target}…`,
+        wsAction: `${resource}.copy`,
+        payload,
         httpCall: () => api(`/api/${resource}/copy`, {
           method: "POST",
           body: JSON.stringify(payload),

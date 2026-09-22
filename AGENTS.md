@@ -50,7 +50,7 @@ What do you need?
 │
 ├─ Credential or cache behaviour
 │  → docs/CREDENTIALS_AND_CACHE.md
-│  → bay/playbook-utils/playbook_utils/credentials.py (today: host+platform only — extend with api_id)
+│  → playbook-utils/playbook_utils/credentials.py (today: host+platform only — extend with api_id)
 │
 ├─ XQL query behaviour (presets, viz, API flow)
 │  → docs/FEATURES.md § XQL
@@ -63,8 +63,9 @@ What do you need?
 │  → ai/guidance-sources/xsoar-6-data-schema.md
 │
 ├─ Playbook refactor (extract-multi, descriptions, task updates)
-│  → bay/playbook-utils/AGENTS.md (reference implementation)
-│  → cortex_ps_toolkit/playbooks/refactor.py (bridge via bay/playbook-utils)
+│  → playbook-utils/AGENTS.md (reference implementation)
+│  → cortex_ps_toolkit/playbooks/refactor_cache.py (validate/preview: toolkit bodies only)
+│  → cortex_ps_toolkit/playbooks/refactor.py (bridge via playbook-utils)
 │  → CLI: playbooks refactor / refactor-preview / update-tasks
 │  → Web: Analysis accordion → Refactor (presets, WS progress); POST /api/playbooks/refactor/*
 │  → WS jobs: playbooks.refactor.execute, playbooks.refactor.workflow
@@ -87,7 +88,7 @@ What do you need?
 └─ API paths / compat / cross-platform experiments
    → docs/PLATFORMS.md § Compatibility API paths + How to experiment
    → cortex_ps_toolkit/core/paths.py (`xsoar_shaped_path`, `XSOAR_COMPAT_PLATFORMS`)
-   → bay/playbook-utils/README.md § APIs by tenant
+   → playbook-utils/README.md § APIs by tenant
    → python3 -m tools.cortex_docs search "<topic>" from ai/
 ```
 
@@ -115,7 +116,7 @@ What do you need?
 
 | Guide | Path |
 | --- | --- |
-| Playbook refactor (reference impl) | `bay/playbook-utils/AGENTS.md` |
+| Playbook refactor (reference impl) | `playbook-utils/AGENTS.md` |
 | XSOAR dev workspace | `ai/AGENTS.md` |
 | Playbook YAML offline analysis | `ai/tools/playbook_yaml/README.md` |
 | Incident workflow metrics | `ai/guidance-sources/xsoar-incident-workflow-analysis.md` |

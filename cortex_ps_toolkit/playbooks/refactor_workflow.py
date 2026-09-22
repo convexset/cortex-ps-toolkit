@@ -10,6 +10,7 @@ from typing import Any, Callable, Optional
 from ..runtime.graph import GraphExecutor, Task, TaskGraph
 from ..settings import max_inflight_per_host
 from .refactor import execute_refactor
+from .refactor_logging import emit_refactor_progress
 from .refactor_cleanup import clear_refactor_playbooks
 from .refactor_mode import is_parallel_mode, resolve_refactor_mode
 from .refactor_presets import get_refactor_preset, resolve_workflow_preset
@@ -40,6 +41,7 @@ def execute_refactor_workflow(
     progress_lock = threading.Lock()
 
     def emit(phase: str, message: str, **extra: Any) -> None:
+        emit_refactor_progress(phase, message)
         if on_progress:
             with progress_lock:
                 on_progress({"phase": phase, "message": message, "timestamp": _utc_now(), **extra})

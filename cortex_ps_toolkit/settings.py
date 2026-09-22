@@ -7,11 +7,12 @@ from typing import Any, Mapping, MutableMapping, Optional
 
 from .collections import load_collection, save_collection
 from .paths import collections_dir
+from .server_config import threshold_ttl_seconds
 
-DEFAULT_CACHE_TTL_SECONDS = 300
+DEFAULT_CACHE_TTL_SECONDS = threshold_ttl_seconds()
 DEFAULT_MAX_INFLIGHT_PER_HOST = 5
 DEFAULT_MAX_INFLIGHT_GLOBAL = 20
-DEFAULT_REFACTOR_EXECUTION_MODE = "sequential"
+DEFAULT_REFACTOR_EXECUTION_MODE = "parallel"
 
 
 def settings_path():
@@ -21,7 +22,7 @@ def settings_path():
 def default_settings() -> dict[str, Any]:
     return {
         "version": 1,
-        "cache_ttl_seconds": DEFAULT_CACHE_TTL_SECONDS,
+        "cache_ttl_seconds": threshold_ttl_seconds(),
         "max_inflight_per_host": DEFAULT_MAX_INFLIGHT_PER_HOST,
         "max_inflight_global": DEFAULT_MAX_INFLIGHT_GLOBAL,
         "refactor_execution_mode": DEFAULT_REFACTOR_EXECUTION_MODE,
@@ -31,7 +32,7 @@ def default_settings() -> dict[str, Any]:
 def load_settings() -> dict[str, Any]:
     payload = load_collection(settings_path(), default=default_settings())
     payload.setdefault("version", 1)
-    payload.setdefault("cache_ttl_seconds", DEFAULT_CACHE_TTL_SECONDS)
+    payload.setdefault("cache_ttl_seconds", threshold_ttl_seconds())
     payload.setdefault("max_inflight_per_host", DEFAULT_MAX_INFLIGHT_PER_HOST)
     payload.setdefault("max_inflight_global", DEFAULT_MAX_INFLIGHT_GLOBAL)
     payload.setdefault("refactor_execution_mode", DEFAULT_REFACTOR_EXECUTION_MODE)

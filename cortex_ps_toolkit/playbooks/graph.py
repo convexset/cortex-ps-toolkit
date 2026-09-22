@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from ..ops_log import op_info, op_warn
 from .entity_resolution import integration_command_from_task, resolve_automation_script
 from .resolver import CachePlaybookResolver
+
+# Guard against pathological playbooks (deep sub nesting / bad nextTasks refs).
+_MAX_EXPANDED_GRAPH_NODES = 50_000
 from .yaml_helpers import (
     next_task_ids,
     playbook_identity,
@@ -18,6 +22,24 @@ from .yaml_helpers import (
 )
 
 ROOT_INSTANCE = "root"
+
+
+@dataclass
+class ExpandedGraphContext:
+    """Expanded execution graph plus precomputed reachability/path metrics."""
+
+    start: TaskNode
+    adjacency: dict[TaskNode, list[TaskNode]]
+    expanded_nodes: dict[TaskNode, dict[str, Any]]
+    instance_playbook_keys: dict[str, str]
+    reachable: set[TaskNode]
+    terminals: set[TaskNode]
+    reachable_task_keys: set[tuple[str, str]]
+    instances_by_key: dict[tuple[str, str], list[TaskNode]]
+    min_steps_from_start: dict[TaskNode, int]
+    max_steps_from_start: dict[TaskNode, int]
+    min_steps_to_terminal: dict[TaskNode, int]
+    max_steps_to_terminal: dict[TaskNode, int]
 
 
 @dataclass(frozen=True)
@@ -52,8 +74,21 @@ def build_expanded_graph(
         if target not in adjacency[source]:
             adjacency[source].append(target)
 
+    truncated = False
+
     def expand(node: TaskNode, active_sub_playbooks: tuple[str, ...]) -> None:
+        nonlocal truncated
         if node in nodes:
+            return
+        if len(nodes) >= _MAX_EXPANDED_GRAPH_NODES:
+            if not truncated:
+                truncated = True
+                op_warn(
+                    "Expanded playbook graph capped at %d nodes (%s); "
+                    "path metrics may be partial",
+                    _MAX_EXPANDED_GRAPH_NODES,
+                    root_key,
+                )
             return
 
         instance_playbook_keys.setdefault(node.instance, node.playbook_key)
@@ -61,6 +96,7 @@ def build_expanded_graph(
         tasks = playbook.get("tasks") or {}
         task = tasks.get(node.task_id)
         if task is None:
+            nodes[node] = {}
             return
 
         nodes[node] = task
@@ -101,7 +137,136 @@ def build_expanded_graph(
                     expand(successor, active_sub_playbooks)
 
     expand(start_node, ())
+    op_info(
+        "Expanded playbook graph for %s — %d node(s), %d edge source(s)",
+        root_key,
+        len(nodes),
+        len(adjacency),
+    )
     return start_node, adjacency, nodes, instance_playbook_keys
+
+
+def _min_distances_from(start: TaskNode, adjacency: dict[TaskNode, list[TaskNode]]) -> dict[TaskNode, int]:
+    distances: dict[TaskNode, int] = {start: 1}
+    queue: deque[TaskNode] = deque([start])
+    while queue:
+        current = queue.popleft()
+        next_depth = distances[current] + 1
+        for successor in adjacency.get(current, ()):
+            if successor not in distances:
+                distances[successor] = next_depth
+                queue.append(successor)
+    return distances
+
+
+def _max_distances_from(
+    start: TaskNode,
+    adjacency: dict[TaskNode, list[TaskNode]],
+    reachable: set[TaskNode],
+) -> dict[TaskNode, int]:
+    order = _topological_order(reachable, adjacency)
+    best: dict[TaskNode, int] = {start: 1}
+    for node in order:
+        if node not in best:
+            continue
+        for successor in adjacency.get(node, ()):
+            if successor not in reachable:
+                continue
+            candidate = best[node] + 1
+            if candidate > best.get(successor, 0):
+                best[successor] = candidate
+    return best
+
+
+def _max_distances_to_terminals(
+    adjacency: dict[TaskNode, list[TaskNode]],
+    reachable: set[TaskNode],
+    terminals: set[TaskNode],
+) -> dict[TaskNode, int]:
+    order = _topological_order(reachable, adjacency)
+    best: dict[TaskNode, int] = {terminal: 1 for terminal in terminals}
+    for node in reversed(order):
+        if node in terminals:
+            continue
+        for successor in adjacency.get(node, ()):
+            if successor not in best:
+                continue
+            candidate = best[successor] + 1
+            if candidate > best.get(node, 0):
+                best[node] = candidate
+    return best
+
+
+def build_expanded_graph_context(
+    root_playbook: dict[str, Any],
+    resolver: CachePlaybookResolver,
+) -> ExpandedGraphContext:
+    """Build expanded graph once and precompute path metrics used by analysis."""
+    start, adjacency, expanded_nodes, instance_playbook_keys = build_expanded_graph(root_playbook, resolver)
+    reachable = _reachable_nodes(start, adjacency)
+    terminals = _terminal_nodes(reachable, adjacency)
+    reachable_task_keys = {(node.playbook_key, node.task_id) for node in reachable}
+
+    instances_by_key: dict[tuple[str, str], list[TaskNode]] = defaultdict(list)
+    for node in expanded_nodes:
+        instances_by_key[(node.playbook_key, node.task_id)].append(node)
+
+    min_steps_from_start = _min_distances_from(start, adjacency)
+    max_steps_from_start = _max_distances_from(start, adjacency, reachable)
+    min_steps_to_terminal = _min_distances_from(
+        next(iter(terminals)),
+        _reverse_adjacency(adjacency, reachable),
+    ) if len(terminals) == 1 else _multi_source_min_distances(
+        terminals,
+        _reverse_adjacency(adjacency, reachable),
+    )
+    max_steps_to_terminal = _max_distances_to_terminals(adjacency, reachable, terminals)
+
+    return ExpandedGraphContext(
+        start=start,
+        adjacency=adjacency,
+        expanded_nodes=expanded_nodes,
+        instance_playbook_keys=instance_playbook_keys,
+        reachable=reachable,
+        terminals=terminals,
+        reachable_task_keys=reachable_task_keys,
+        instances_by_key=dict(instances_by_key),
+        min_steps_from_start=min_steps_from_start,
+        max_steps_from_start=max_steps_from_start,
+        min_steps_to_terminal=min_steps_to_terminal,
+        max_steps_to_terminal=max_steps_to_terminal,
+    )
+
+
+def _reverse_adjacency(
+    adjacency: dict[TaskNode, list[TaskNode]],
+    reachable: set[TaskNode],
+) -> dict[TaskNode, list[TaskNode]]:
+    reverse: dict[TaskNode, list[TaskNode]] = defaultdict(list)
+    for source in reachable:
+        for target in adjacency.get(source, ()):
+            if target in reachable:
+                reverse[target].append(source)
+    return reverse
+
+
+def _multi_source_min_distances(
+    sources: set[TaskNode],
+    adjacency: dict[TaskNode, list[TaskNode]],
+) -> dict[TaskNode, int]:
+    distances: dict[TaskNode, int] = {}
+    queue: deque[TaskNode] = deque()
+    for source in sources:
+        distances[source] = 1
+        queue.append(source)
+    while queue:
+        current = queue.popleft()
+        next_depth = distances[current] + 1
+        for successor in adjacency.get(current, ()):
+            if successor not in distances:
+                distances[successor] = next_depth
+                queue.append(successor)
+    return distances
 
 
 def _reachable_nodes(start: TaskNode, adjacency: dict[TaskNode, list[TaskNode]]) -> set[TaskNode]:
@@ -206,13 +371,13 @@ def _min_path_to_target(
 def compute_completion_path_metrics(
     root_playbook: dict[str, Any],
     resolver: CachePlaybookResolver,
+    *,
+    graph_context: ExpandedGraphContext | None = None,
 ) -> dict[str, Any]:
     """Shortest/longest sequential task count from start to any completion (recursive subs)."""
-    start, adjacency, _nodes, _keys = build_expanded_graph(root_playbook, resolver)
-    reachable = _reachable_nodes(start, adjacency)
-    terminals = _terminal_nodes(reachable, adjacency)
+    ctx = graph_context or build_expanded_graph_context(root_playbook, resolver)
 
-    if not reachable:
+    if not ctx.reachable:
         return {
             "min_tasks_to_completion": None,
             "max_tasks_to_completion": None,
@@ -221,30 +386,33 @@ def compute_completion_path_metrics(
             "note": "No reachable tasks from start.",
         }
 
-    if not terminals:
+    if not ctx.terminals:
         return {
             "min_tasks_to_completion": None,
             "max_tasks_to_completion": None,
             "terminal_count": 0,
-            "reachable_task_steps": len(reachable),
+            "reachable_task_steps": len(ctx.reachable),
             "note": "No terminal completion nodes (possible cycle or open branch).",
         }
 
-    min_len: int | None = None
-    max_len = 0
-    for terminal in terminals:
-        shortest, _ = _min_path_to_target(start, adjacency, terminal)
-        if shortest is not None:
-            min_len = shortest if min_len is None else min(min_len, shortest)
-        longest, _ = _longest_path_in_dag(start, terminal, adjacency, reachable)
-        if longest > max_len:
-            max_len = longest
+    terminal_mins = [
+        ctx.min_steps_from_start[terminal]
+        for terminal in ctx.terminals
+        if terminal in ctx.min_steps_from_start
+    ]
+    terminal_maxes = [
+        ctx.max_steps_from_start[terminal]
+        for terminal in ctx.terminals
+        if terminal in ctx.max_steps_from_start
+    ]
+    min_len = min(terminal_mins) if terminal_mins else None
+    max_len = max(terminal_maxes) if terminal_maxes else 0
 
     return {
         "min_tasks_to_completion": min_len,
         "max_tasks_to_completion": max_len if max_len > 0 else None,
-        "terminal_count": len(terminals),
-        "reachable_task_steps": len(reachable),
+        "terminal_count": len(ctx.terminals),
+        "reachable_task_steps": len(ctx.reachable),
         "note": None,
     }
 
@@ -273,8 +441,8 @@ def _playbook_task_sort_key(task_id: str) -> tuple[int, str]:
     return (0, f"{int(text):020d}") if text.isdigit() else (1, text)
 
 
-def compute_conditional_branches_by_task(playbook: dict[str, Any]) -> dict[str, set[str]]:
-    """Union of condition-branch names on any path from playbook start to each task."""
+def compute_conditional_branches_by_task(playbook: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
+    """Union of condition branches on any path from playbook start to each task."""
     tasks = playbook.get("tasks") or {}
     if not tasks:
         return {}
@@ -292,22 +460,33 @@ def compute_conditional_branches_by_task(playbook: dict[str, Any]) -> dict[str, 
             for target in targets:
                 reverse[str(target)].append((task_id, label))
 
-    memo: dict[str, set[str]] = {}
+    memo: dict[str, list[dict[str, str]]] = {}
     visiting: set[str] = set()
 
-    def union_for(task_id: str) -> set[str]:
+    def _branch_key(branch: dict[str, str]) -> tuple[str, str]:
+        return (branch.get("label") or "", branch.get("condition_task_id") or "")
+
+    def union_for(task_id: str) -> list[dict[str, str]]:
         if task_id in memo:
             return memo[task_id]
         if task_id in visiting:
-            return set()
+            return []
         visiting.add(task_id)
-        acc: set[str] = set()
+        seen: set[tuple[str, str]] = set()
+        acc: list[dict[str, str]] = []
         for pred_id, edge_label in reverse.get(task_id, []):
-            pred_branches = union_for(pred_id)
-            path_branches = set(pred_branches)
+            for branch in union_for(pred_id):
+                key = _branch_key(branch)
+                if key in seen:
+                    continue
+                seen.add(key)
+                acc.append(dict(branch))
             if task_types.get(pred_id) == "condition" and edge_label:
-                path_branches.add(edge_label)
-            acc |= path_branches
+                branch = {"label": edge_label, "condition_task_id": pred_id}
+                key = _branch_key(branch)
+                if key not in seen:
+                    seen.add(key)
+                    acc.append(branch)
         visiting.remove(task_id)
         memo[task_id] = acc
         return acc
@@ -395,13 +574,10 @@ def _add_task_to_bucket(
 
 
 def _expanded_path_metrics_for_instances(
-    start: TaskNode,
+    ctx: ExpandedGraphContext,
     instances: list[TaskNode],
-    adjacency: dict[TaskNode, list[TaskNode]],
-    reachable: set[TaskNode],
-    terminals: set[TaskNode],
 ) -> dict[str, Any]:
-    reachable_instances = [item for item in instances if item in reachable]
+    reachable_instances = [item for item in instances if item in ctx.reachable]
     if not reachable_instances:
         return {
             "expanded_reachable": False,
@@ -411,33 +587,17 @@ def _expanded_path_metrics_for_instances(
             "max_steps_to_terminal": None,
         }
 
-    min_from_start: int | None = None
-    max_from_start: int | None = None
-    min_to_terminal: int | None = None
-    max_to_terminal: int | None = None
-
-    for inst in reachable_instances:
-        shortest_from, _ = _min_path_to_target(start, adjacency, inst)
-        if shortest_from is not None:
-            min_from_start = shortest_from if min_from_start is None else min(min_from_start, shortest_from)
-        longest_from, _ = _longest_path_in_dag(start, inst, adjacency, reachable)
-        if longest_from > 0:
-            max_from_start = longest_from if max_from_start is None else max(max_from_start, longest_from)
-
-        for terminal in terminals:
-            shortest_to, _ = _min_path_to_target(inst, adjacency, terminal)
-            if shortest_to is not None:
-                min_to_terminal = shortest_to if min_to_terminal is None else min(min_to_terminal, shortest_to)
-            longest_to, _ = _longest_path_in_dag(inst, terminal, adjacency, reachable)
-            if longest_to > 0:
-                max_to_terminal = longest_to if max_to_terminal is None else max(max_to_terminal, longest_to)
+    from_start = [ctx.min_steps_from_start[inst] for inst in reachable_instances if inst in ctx.min_steps_from_start]
+    max_from = [ctx.max_steps_from_start[inst] for inst in reachable_instances if inst in ctx.max_steps_from_start]
+    to_terminal = [ctx.min_steps_to_terminal[inst] for inst in reachable_instances if inst in ctx.min_steps_to_terminal]
+    max_to = [ctx.max_steps_to_terminal[inst] for inst in reachable_instances if inst in ctx.max_steps_to_terminal]
 
     return {
         "expanded_reachable": True,
-        "min_steps_from_start": min_from_start,
-        "max_steps_from_start": max_from_start,
-        "min_steps_to_terminal": min_to_terminal,
-        "max_steps_to_terminal": max_to_terminal,
+        "min_steps_from_start": min(from_start) if from_start else None,
+        "max_steps_from_start": max(max_from) if max_from else None,
+        "min_steps_to_terminal": min(to_terminal) if to_terminal else None,
+        "max_steps_to_terminal": max(max_to) if max_to else None,
     }
 
 
@@ -448,16 +608,10 @@ def compute_playbook_task_listings(
     *,
     script_by_id: dict[str, dict[str, Any]] | None = None,
     script_by_name: dict[str, dict[str, Any]] | None = None,
+    graph_context: ExpandedGraphContext | None = None,
 ) -> list[dict[str, Any]]:
     """One row per task in each playbook file, with expanded-graph path metrics."""
-    start, adjacency, expanded_nodes, _keys = build_expanded_graph(root_playbook, resolver)
-    reachable_nodes = _reachable_nodes(start, adjacency)
-    reachable_task_keys = {(node.playbook_key, node.task_id) for node in reachable_nodes}
-    terminals = _terminal_nodes(reachable_nodes, adjacency)
-
-    instances_by_key: dict[tuple[str, str], list[TaskNode]] = defaultdict(list)
-    for node in expanded_nodes:
-        instances_by_key[(node.playbook_key, node.task_id)].append(node)
+    ctx = graph_context or build_expanded_graph_context(root_playbook, resolver)
 
     listings: list[dict[str, Any]] = []
     branch_cache: dict[str, dict[str, set[str]]] = {}
@@ -489,11 +643,8 @@ def compute_playbook_task_listings(
                 script_by_name=script_by_name,
             )
             path_metrics = _expanded_path_metrics_for_instances(
-                start,
-                instances_by_key.get((pb_key, tid), []),
-                adjacency,
-                reachable_nodes,
-                terminals,
+                ctx,
+                ctx.instances_by_key.get((pb_key, tid), []),
             )
             task_rows.append(
                 {
@@ -504,9 +655,12 @@ def compute_playbook_task_listings(
                     "scripts": sorted(scripts),
                     "playbooks": sorted(playbooks),
                     "commands": sorted(commands),
-                    "conditional_branches": sorted(branches_by_task.get(tid, set())),
+                    "conditional_branches": sorted(
+                        branches_by_task.get(tid, []),
+                        key=lambda branch: (branch.get("label") or "", branch.get("condition_task_id") or ""),
+                    ),
                     **path_metrics,
-                    "expanded_reachable": (pb_key, tid) in reachable_task_keys,
+                    "expanded_reachable": (pb_key, tid) in ctx.reachable_task_keys,
                 }
             )
 
@@ -529,10 +683,11 @@ def compute_task_summaries(
     *,
     script_by_id: dict[str, dict[str, Any]] | None = None,
     script_by_name: dict[str, dict[str, Any]] | None = None,
+    graph_context: ExpandedGraphContext | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
     """Reachable, unreachable, and all-task summaries with script/playbook/command bindings."""
-    _start, adjacency, _nodes, _keys = build_expanded_graph(root_playbook, resolver)
-    reachable_task_keys = {(node.playbook_key, node.task_id) for node in _reachable_nodes(_start, adjacency)}
+    ctx = graph_context or build_expanded_graph_context(root_playbook, resolver)
+    reachable_task_keys = ctx.reachable_task_keys
 
     reachable_buckets: dict[tuple[str, str], _TaskSummaryBucket] = defaultdict(_TaskSummaryBucket)
     unreachable_buckets: dict[tuple[str, str], _TaskSummaryBucket] = defaultdict(_TaskSummaryBucket)

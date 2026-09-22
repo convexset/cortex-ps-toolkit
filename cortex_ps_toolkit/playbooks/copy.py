@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Mapping, Optional, Sequence
+from typing import Any, Callable, Literal, Mapping, Optional, Sequence
 
+from ..core.batch_copy_progress import emit_copy_item_step, make_batch_copy_progress
 from ..core.client import TenantApiError
+from ..ops_log import op_action, op_info
 from ..credentials import CredentialProfile, get_profile
 from ..platforms import assert_operation_supported
 from . import api
@@ -107,93 +109,128 @@ def copy_playbooks_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     source = get_profile(source_profile)
     target = get_profile(target_profile)
     assert_operation_supported("playbooks.copy", source.tenant_type)
     assert_operation_supported("playbooks.copy", target.tenant_type)
 
-    plan = plan_playbooks_copy(
-        source_profile,
-        target_profile,
-        playbook_ids,
-        overwrite=overwrite,
-        stop_on_conflict=stop_on_conflict,
+    progress = make_batch_copy_progress(
+        title="Playbooks Copy Progress",
+        operation="playbooks.copy",
+        on_progress=on_progress,
     )
-    if plan["would_abort"]:
-        conflict_names = ", ".join(item["name"] for item in plan["conflicts"])
+    with op_action(
+        "Playbooks copy %s → %s (%d playbook(s))",
+        source.slug,
+        target.slug,
+        len(playbook_ids),
+    ):
+        plan = plan_playbooks_copy(
+            source_profile,
+            target_profile,
+            playbook_ids,
+            overwrite=overwrite,
+            stop_on_conflict=stop_on_conflict,
+        )
+        progress.complete_stage()
+        if plan["would_abort"]:
+            conflict_names = ", ".join(item["name"] for item in plan["conflicts"])
+            return {
+                "source_profile": source.slug,
+                "target_profile": target.slug,
+                "aborted": True,
+                "reason": (
+                    f"Stopped: {len(plan['conflicts'])} playbook(s) already exist on {target.slug}: "
+                    f"{conflict_names}"
+                ),
+                "conflicts": plan["conflicts"],
+                "results": [],
+            }
+
+        results: list[dict[str, Any]] = []
+        plan_by_id = {item["playbook_id"]: item for item in plan["items"]}
+        total = len(playbook_ids)
+        for index, playbook_id in enumerate(playbook_ids, start=1):
+            item = plan_by_id[playbook_id]
+            name = item["name"]
+            action = item["action"]
+            if action == "skip":
+                results.append({
+                    "playbook_id": playbook_id,
+                    "name": name,
+                    "status": "skipped",
+                    "reason": f"Playbook {name!r} already exists on {target.slug}",
+                })
+                continue
+            if action == "conflict":
+                results.append({
+                    "playbook_id": playbook_id,
+                    "name": name,
+                    "status": "conflict",
+                    "reason": f"Playbook {name!r} already exists on {target.slug}",
+                })
+                continue
+
+            overwrite_save = action == "update"
+            target_playbook_id = str(item.get("target_id") or "") if overwrite_save else None
+            emit_copy_item_step(
+                on_progress,
+                source=source.slug,
+                target=target.slug,
+                item_label="playbook",
+                name=name,
+                index=index,
+                total=total,
+                item_id=playbook_id,
+            )
+            op_info(
+                "Copying playbook %r (%s) %s → %s [%s]",
+                name,
+                playbook_id,
+                source.slug,
+                target.slug,
+                "overwrite" if overwrite_save else "create",
+            )
+            playbook_doc = api.get_playbook(source, playbook_id)
+            filename = f"{name.replace('/', '_')}.yml"
+            try:
+                saved, status_code, unresolved = save_playbook_document(
+                    target,
+                    playbook_doc,
+                    filename=filename,
+                    target_playbook_id=target_playbook_id or None,
+                    overwrite=overwrite_save,
+                    source_profile=source,
+                )
+            except TenantApiError as exc:
+                results.append({
+                    "playbook_id": playbook_id,
+                    "name": name,
+                    "status": "failed",
+                    "target_playbook_id": target_playbook_id or None,
+                    "error": str(exc),
+                    "response": exc.body if isinstance(exc.body, dict) else {},
+                    "status_code": exc.status_code,
+                })
+                continue
+            results.append({
+                "playbook_id": playbook_id,
+                "name": name,
+                "status": "updated" if overwrite_save else "copied",
+                "target_playbook_id": target_playbook_id or saved.get("id") or saved.get("playbookId"),
+                "response": saved,
+                "status_code": status_code,
+                "binding_unresolved": unresolved,
+            })
+
+        progress.complete_stage()
+        op_info("Refreshing playbooks cache on %s after playbook copy", target.slug)
+        refresh_playbooks_cache(target)
+        progress.complete_stage()
         return {
             "source_profile": source.slug,
             "target_profile": target.slug,
-            "aborted": True,
-            "reason": (
-                f"Stopped: {len(plan['conflicts'])} playbook(s) already exist on {target.slug}: "
-                f"{conflict_names}"
-            ),
-            "conflicts": plan["conflicts"],
-            "results": [],
+            "results": results,
         }
-
-    results: list[dict[str, Any]] = []
-    plan_by_id = {item["playbook_id"]: item for item in plan["items"]}
-    for playbook_id in playbook_ids:
-        item = plan_by_id[playbook_id]
-        name = item["name"]
-        action = item["action"]
-        if action == "skip":
-            results.append({
-                "playbook_id": playbook_id,
-                "name": name,
-                "status": "skipped",
-                "reason": f"Playbook {name!r} already exists on {target.slug}",
-            })
-            continue
-        if action == "conflict":
-            results.append({
-                "playbook_id": playbook_id,
-                "name": name,
-                "status": "conflict",
-                "reason": f"Playbook {name!r} already exists on {target.slug}",
-            })
-            continue
-
-        overwrite_save = action == "update"
-        target_playbook_id = str(item.get("target_id") or "") if overwrite_save else None
-        playbook_doc = api.get_playbook(source, playbook_id)
-        filename = f"{name.replace('/', '_')}.yml"
-        try:
-            saved, status_code, unresolved = save_playbook_document(
-                target,
-                playbook_doc,
-                filename=filename,
-                target_playbook_id=target_playbook_id or None,
-                overwrite=overwrite_save,
-                source_profile=source,
-            )
-        except TenantApiError as exc:
-            results.append({
-                "playbook_id": playbook_id,
-                "name": name,
-                "status": "failed",
-                "target_playbook_id": target_playbook_id or None,
-                "error": str(exc),
-                "response": exc.body if isinstance(exc.body, dict) else {},
-                "status_code": exc.status_code,
-            })
-            continue
-        results.append({
-            "playbook_id": playbook_id,
-            "name": name,
-            "status": "updated" if overwrite_save else "copied",
-            "target_playbook_id": target_playbook_id or saved.get("id") or saved.get("playbookId"),
-            "response": saved,
-            "status_code": status_code,
-            "binding_unresolved": unresolved,
-        })
-
-    refresh_playbooks_cache(target)
-    return {
-        "source_profile": source.slug,
-        "target_profile": target.slug,
-        "results": results,
-    }

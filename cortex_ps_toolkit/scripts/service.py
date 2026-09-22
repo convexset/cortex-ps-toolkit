@@ -5,14 +5,12 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ..credentials import CredentialProfile, get_profile
-from ..ops_log import op_info
 from . import api
 from .cache import find_script_in_index, load_scripts_index, scripts_index_path, write_scripts_cache
 
 
 def refresh_scripts_cache(profile: CredentialProfile | str) -> dict[str, Any]:
     resolved = get_profile(profile) if isinstance(profile, str) else profile
-    op_info("Fetching scripts from tenant API for %s", resolved.slug)
     search = api.search_scripts(resolved)
 
     if search.warning and not search.scripts:

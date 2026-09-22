@@ -102,7 +102,7 @@ python3 -m cortex_ps_toolkit playbooks copy-components \
 python3 -m cortex_ps_toolkit playbooks delete-preview --profile personal-xsoar6 --id <uuid>
 python3 -m cortex_ps_toolkit playbooks delete --profile personal-xsoar6 --id <uuid>
 
-# Refactor (wraps bay/playbook-utils extract-multi)
+# Refactor (wraps playbook-utils extract-multi)
 python3 -m cortex_ps_toolkit playbooks refactor-preview \
   --profile xsoar-japac-dev --id <uuid> \
   --task 366 --cluster 21:52 \
@@ -209,6 +209,10 @@ python3 -m cortex_ps_toolkit design-content orchestrate \
 ```
 
 Web REST: [`api/toolkit/WEB-API.md`](api/toolkit/WEB-API.md) (Object Setup section).
+
+**Saved copy bundles** (one identifier per **source profile**): `GET/POST /api/object-setup/bundles?profile=`, `GET/DELETE /api/object-setup/bundles/{id}?profile=`, `POST /api/object-setup/bundles/resolve`. Storage: `data/collections/object_setup_bundles.json` (v2: `profiles.{slug}.{bundle_id}`).
+
+Delta since initial commit: [`CHANGELOG-post-initial-commit.md`](CHANGELOG-post-initial-commit.md).
 
 ---
 

@@ -1,4 +1,4 @@
-"""Refactor execution mode: sequential (default) or parallel (experimental)."""
+"""Refactor execution mode: parallel (default for phase-1 sub uploads) or sequential."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ _VALID_MODES = frozenset({REFACTOR_MODE_SEQUENTIAL, REFACTOR_MODE_PARALLEL})
 
 
 def resolve_refactor_mode(override: Optional[str] = None) -> str:
-    """Resolve effective refactor mode (override > env > settings > sequential)."""
+    """Resolve effective refactor mode (override > env > settings > parallel)."""
     if override is not None:
         mode = str(override).strip().lower()
         if mode in _VALID_MODES:
@@ -25,10 +25,10 @@ def resolve_refactor_mode(override: Optional[str] = None) -> str:
         return env
 
     settings = load_settings()
-    mode = str(settings.get("refactor_execution_mode") or REFACTOR_MODE_SEQUENTIAL).strip().lower()
+    mode = str(settings.get("refactor_execution_mode") or REFACTOR_MODE_PARALLEL).strip().lower()
     if mode in _VALID_MODES:
         return mode
-    return REFACTOR_MODE_SEQUENTIAL
+    return REFACTOR_MODE_PARALLEL
 
 
 def is_parallel_mode(override: Optional[str] = None) -> bool:

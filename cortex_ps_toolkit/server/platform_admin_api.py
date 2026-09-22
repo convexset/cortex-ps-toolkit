@@ -25,7 +25,8 @@ from ..platform_admin.service import list_cached_items, refresh_all_cache, refre
 from ..platform_admin.types import ADMIN_SECTIONS, AdminSection
 from ..platforms import UnsupportedOperation
 from .common import error_response, read_json, run_sync
-from .copy_notifications import publish_copy_success_notifications
+from ..core.batch_copy_progress import chain_progress
+from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
 from .delete_notifications import publish_delete_success_notifications
 
 
@@ -106,6 +107,8 @@ async def api_platform_admin_correlation_copy(request: Request) -> JSONResponse:
         rule_names = [str(item) for item in (body.get("rule_names") or [])]
         if not source or not target or not rule_names:
             raise ValueError("source_profile, target_profile, rule_names required")
+        title = "Correlation rules copy"
+        on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
             copy_correlation_rules_to_tenant,
             source,
@@ -114,14 +117,9 @@ async def api_platform_admin_correlation_copy(request: Request) -> JSONResponse:
             overwrite=bool(body.get("overwrite")),
             stop_on_conflict=bool(body.get("stop_on_conflict")),
             name_suffix=body.get("name_suffix"),
+            on_progress=on_progress,
         )
-        if result.get("executed"):
-            publish_copy_success_notifications(
-                result,
-                title="Correlation rules copy",
-                source=source,
-                target=target,
-            )
+        publish_standard_copy_outcome(result, title=title, source=source, target=target)
         return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400
@@ -159,6 +157,8 @@ async def api_platform_admin_biocs_copy(request: Request) -> JSONResponse:
         names = [str(item) for item in (body.get("names") or body.get("bioc_names") or [])]
         if not source or not target or not names:
             raise ValueError("source_profile, target_profile, names required")
+        title = "BIOC copy"
+        on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
             copy_biocs_to_tenant,
             source,
@@ -167,14 +167,9 @@ async def api_platform_admin_biocs_copy(request: Request) -> JSONResponse:
             overwrite=bool(body.get("overwrite")),
             stop_on_conflict=bool(body.get("stop_on_conflict")),
             name_suffix=body.get("name_suffix"),
+            on_progress=on_progress,
         )
-        if result.get("executed"):
-            publish_copy_success_notifications(
-                result,
-                title="BIOC copy",
-                source=source,
-                target=target,
-            )
+        publish_standard_copy_outcome(result, title=title, source=source, target=target)
         return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400
@@ -289,6 +284,8 @@ async def api_platform_admin_indicators_copy(request: Request) -> JSONResponse:
         ids = [str(item) for item in (body.get("ids") or [])]
         if not source or not target or not ids:
             raise ValueError("source_profile, target_profile, ids required")
+        title = "Indicator copy"
+        on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
             copy_indicators_to_tenant,
             source,
@@ -296,14 +293,9 @@ async def api_platform_admin_indicators_copy(request: Request) -> JSONResponse:
             ids,
             overwrite=bool(body.get("overwrite")),
             stop_on_conflict=bool(body.get("stop_on_conflict")),
+            on_progress=on_progress,
         )
-        if result.get("executed"):
-            publish_copy_success_notifications(
-                result,
-                title="Indicator copy",
-                source=source,
-                target=target,
-            )
+        publish_standard_copy_outcome(result, title=title, source=source, target=target)
         return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400

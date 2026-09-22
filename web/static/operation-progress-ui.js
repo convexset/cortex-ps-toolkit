@@ -26,6 +26,39 @@ function createOperationProgress(title) {
   let progressToast = null;
 
   function formatProgressMessage(event) {
+    if (event?.phase === "fetch_script") {
+      const name = event.script_name || event.script_id || "script";
+      const progress =
+        event.current != null && event.total != null ? ` (${event.current}/${event.total})` : "";
+      if (event.status === "complete") {
+        return `Cached script ${name}${progress}`;
+      }
+      return `Fetching script ${name} from tenant${progress}…`;
+    }
+    if (event?.phase === "prefetch_bodies" && event.status === "running") {
+      return "Downloading missing playbook and script bodies…";
+    }
+    if (event?.phase === "fetch_playbook") {
+      const name = event.playbook_name || event.playbook_id || "playbook";
+      const progress =
+        event.current != null && event.total != null ? ` (${event.current}/${event.total})` : "";
+      const reasonHint =
+        event.reason === "missing_file"
+          ? " (first download)"
+          : event.reason === "modified_mismatch"
+            ? " (re-sync)"
+            : "";
+      if (event.status === "complete") {
+        return `Cached ${name}${progress}${reasonHint}`;
+      }
+      return `Fetching ${name} from tenant${progress}${reasonHint}…`;
+    }
+    if (event?.phase === "stage_complete" && event.stage != null && event.stage_total != null) {
+      const elapsed =
+        event.elapsed_seconds != null ? formatElapsedSeconds(event.elapsed_seconds) : "";
+      const label = event.stage_label || event.step || "Step";
+      return `Completed Stage ${event.stage}/${event.stage_total} ${label}${elapsed ? ` (Time Elapsed: ${elapsed})` : ""}`;
+    }
     const current = event?.current || {};
     const parts = [];
     if (current.source && current.target) parts.push(`${current.source} → ${current.target}`);
@@ -36,8 +69,15 @@ function createOperationProgress(title) {
     if (current.status) parts.push(String(current.status));
     if (current.item_count != null) parts.push(`${current.item_count} item(s)`);
     const body = parts.join(" · ") || "Working…";
-    const elapsed = event?.elapsed_seconds != null ? `${event.elapsed_seconds}s` : "";
+    const elapsed = event?.elapsed_seconds != null ? formatElapsedSeconds(event.elapsed_seconds) : "";
     return elapsed ? `[${elapsed}] ${body}` : body;
+  }
+
+  function formatElapsedSeconds(seconds) {
+    const total = Math.max(0, Math.round(Number(seconds) || 0));
+    const minutes = Math.floor(total / 60);
+    const secs = total % 60;
+    return minutes ? `${minutes}m ${secs}s` : `${secs}s`;
   }
 
   function show(message) {
@@ -65,7 +105,13 @@ function createOperationProgress(title) {
   }
 
   function onProgress(event) {
-    if (event?.phase === "heartbeat" || event?.phase === "step" || event?.phase === "started") {
+    if (
+      event?.phase === "heartbeat" ||
+      event?.phase === "step" ||
+      event?.phase === "started" ||
+      event?.phase === "stage_complete" ||
+      event?.phase === "fetch_playbook"
+    ) {
       show(formatProgressMessage(event));
     }
   }

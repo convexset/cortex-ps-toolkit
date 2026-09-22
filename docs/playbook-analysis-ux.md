@@ -12,7 +12,18 @@
 | **Full task collection** | **Detail** (per-playbook) + flow raw JSON/YAML | Flat searchable table is a follow-up ([`OUTSTANDING.md`](OUTSTANDING.md)) |
 | **Act** — refactor or copy | **Refactor** / **Copy** | Separated from read-only analysis sections |
 
-**Refactor task pickers:** leaf and cluster operations use dropdowns from `refactor_task_catalog` (task id, title, truncated description). **Check validity** calls `POST /api/playbooks/refactor/validate-extract` (playbook-utils graph rules server-side). Error-handling match preview remains client-side against the analysis tree.
+**Refactor task pickers:** leaf and cluster operations use dropdowns from `refactor_task_catalog` (task id, title, truncated description). **Check validity** calls `POST /api/playbooks/refactor/validate-extract` (playbook-utils graph rules on **toolkit-cached** playbook JSON only — no tenant fetch). **Preview refactor** uses the same cache. Error-handling match preview remains client-side against the analysis tree.
+
+## Playbook cache (index vs bodies)
+
+| Store | Location | Used for |
+| --- | --- | --- |
+| Index | `playbooks/index.json` | Grid, metadata, modified stamps |
+| Bodies | `playbooks/bodies/{id}.json` | Analysis, validate-extract, refactor preview, copy planning |
+
+Before analysis on a stale or partial cache, the UI may call `GET …/analysis/fetch-plan` and run WebSocket `playbooks.analyze` to download missing bodies with progress toasts. If validate or preview fails with a cache miss, refresh Playbook Tools (playbooks **and** scripts), open analysis again, then retry refactor.
+
+See [`CHANGELOG-post-initial-commit.md`](CHANGELOG-post-initial-commit.md) for the full delta since the initial toolkit commit.
 
 ## Section order (top → bottom)
 
@@ -41,7 +52,7 @@ Sticky **section nav** jumps between blocks without scrolling past unrelated con
 | Refactor parent copy | Fear of overwriting source | Refactor section help + confirm dialog |
 | Cluster START:END | Invalid ranges | Inline validation |
 | Error handling spec | Opaque DSL | Structured match/retry/on-error UI + generated spec preview |
-| Parallel extract-multi | “Experimental” unclear | Help on checkbox |
+| Phase 1 parallel uploads | Default behavior | Stated in run-order blurb; sequential under Advanced |
 
 ## Future UX (see [`OUTSTANDING.md`](OUTSTANDING.md))
 

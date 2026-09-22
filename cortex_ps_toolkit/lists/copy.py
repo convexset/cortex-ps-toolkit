@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Mapping, Optional, Sequence
+from typing import Any, Callable, Literal, Mapping, Optional, Sequence
 
+from ..core.batch_copy_progress import emit_copy_item_step, make_batch_copy_progress
 from ..credentials import CredentialProfile, get_profile
+from ..ops_log import op_action, op_info
 from ..platforms import assert_operation_supported
 from . import api
 from .cache import find_list_in_index
@@ -141,81 +143,116 @@ def copy_lists_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     source = get_profile(source_profile)
     target = get_profile(target_profile)
     assert_operation_supported("content.lists.manage", source.tenant_type)
     assert_operation_supported("content.lists.manage", target.tenant_type)
 
-    plan = plan_lists_copy(
-        source_profile,
-        target_profile,
-        list_ids,
-        overwrite=overwrite,
-        stop_on_conflict=stop_on_conflict,
+    progress = make_batch_copy_progress(
+        title="Lists Copy Progress",
+        operation="lists.copy",
+        on_progress=on_progress,
+        with_cache_refresh=False,
     )
-    if plan["would_abort"]:
-        conflict_names = ", ".join(item["name"] for item in plan["conflicts"])
+    with op_action(
+        "Lists copy %s → %s (%d list(s))",
+        source.slug,
+        target.slug,
+        len(list_ids),
+    ):
+        plan = plan_lists_copy(
+            source_profile,
+            target_profile,
+            list_ids,
+            overwrite=overwrite,
+            stop_on_conflict=stop_on_conflict,
+        )
+        progress.complete_stage()
+        if plan["would_abort"]:
+            conflict_names = ", ".join(item["name"] for item in plan["conflicts"])
+            return {
+                "source_profile": source.slug,
+                "target_profile": target.slug,
+                "aborted": True,
+                "reason": (
+                    f"Stopped: {len(plan['conflicts'])} list(s) already exist on {target.slug}: "
+                    f"{conflict_names}"
+                ),
+                "conflicts": plan["conflicts"],
+                "results": [],
+            }
+
+        results: list[dict[str, Any]] = []
+        plan_by_id = {item["list_id"]: item for item in plan["items"]}
+        total = len(list_ids)
+        for index, list_id in enumerate(list_ids, start=1):
+            item = plan_by_id[list_id]
+            name = item["name"]
+            action = item["action"]
+            if action == "skip":
+                results.append({
+                    "list_id": list_id,
+                    "name": name,
+                    "status": "skipped",
+                    "reason": f"List {name!r} already exists on {target.slug}",
+                })
+                continue
+            if action == "conflict":
+                results.append({
+                    "list_id": list_id,
+                    "name": name,
+                    "status": "conflict",
+                    "reason": f"List {name!r} already exists on {target.slug}",
+                })
+                continue
+
+            emit_copy_item_step(
+                on_progress,
+                source=source.slug,
+                target=target.slug,
+                item_label="list",
+                name=name,
+                index=index,
+                total=total,
+                item_id=list_id,
+            )
+            op_info(
+                "Copying list %r (%s) %s → %s [%s]",
+                name,
+                list_id,
+                source.slug,
+                target.slug,
+                action,
+            )
+            entry = resolve_list_entry(source, list_id)
+            list_type = str(entry.get("type") or "plain_text")
+            description = str(entry.get("description") or "")
+            data = normalize_list_data(entry.get("data"), "")
+
+            overwrite_save = action == "update"
+            target_id = str(item.get("target_id") or "") if overwrite_save else None
+            saved, status_code = save_list(
+                target,
+                name=name,
+                data=data,
+                list_type=list_type,
+                description=description,
+                list_id=target_id or None,
+            )
+            results.append({
+                "list_id": list_id,
+                "name": name,
+                "status": "updated" if overwrite_save else "copied",
+                "target_id": saved.get("id") or target_id,
+                "status_code": status_code,
+            })
+
+        progress.complete_stage()
+        progress.complete_stage()
         return {
             "source_profile": source.slug,
             "target_profile": target.slug,
-            "aborted": True,
-            "reason": (
-                f"Stopped: {len(plan['conflicts'])} list(s) already exist on {target.slug}: "
-                f"{conflict_names}"
-            ),
-            "conflicts": plan["conflicts"],
-            "results": [],
+            "results": results,
         }
-
-    results: list[dict[str, Any]] = []
-    plan_by_id = {item["list_id"]: item for item in plan["items"]}
-    for list_id in list_ids:
-        item = plan_by_id[list_id]
-        name = item["name"]
-        action = item["action"]
-        if action == "skip":
-            results.append({
-                "list_id": list_id,
-                "name": name,
-                "status": "skipped",
-                "reason": f"List {name!r} already exists on {target.slug}",
-            })
-            continue
-        if action == "conflict":
-            results.append({
-                "list_id": list_id,
-                "name": name,
-                "status": "conflict",
-                "reason": f"List {name!r} already exists on {target.slug}",
-            })
-            continue
-
-        entry = resolve_list_entry(source, list_id)
-        list_type = str(entry.get("type") or "plain_text")
-        description = str(entry.get("description") or "")
-        data = normalize_list_data(entry.get("data"), "")
-
-        overwrite_save = action == "update"
-        target_id = str(item.get("target_id") or "") if overwrite_save else None
-        saved, status_code = save_list(
-            target,
-            name=name,
-            data=data,
-            list_type=list_type,
-            description=description,
-            list_id=target_id or None,
-        )
-        results.append({
-            "list_id": list_id,
-            "name": name,
-            "status": "updated" if overwrite_save else "copied",
-            "target_id": saved.get("id") or target_id,
-            "status_code": status_code,
-        })
-
-    return {
-        "source_profile": source.slug,
-        "target_profile": target.slug,
-        "results": results,
-    }

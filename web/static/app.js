@@ -195,6 +195,7 @@ function summarizeComponentCopyResult(data) {
   const playbooksCopied = playbookResults.filter((row) => row.status === "copied" || row.status === "updated").length;
   const bindingIssues = (data.binding_issues || []).length;
   const scriptFailed = scriptResults.filter((row) => row.status === "failed").length;
+  const playbooksFailed = playbookResults.filter((row) => row.status === "failed").length;
   let message = `Scripts: ${scriptsCopied} saved. Playbooks: ${playbooksCopied} saved.`;
   if (bindingIssues) {
     message += ` ${bindingIssues} script binding issue(s) — check server log.`;
@@ -202,15 +203,79 @@ function summarizeComponentCopyResult(data) {
   if (scriptFailed) {
     message += ` ${scriptFailed} script(s) failed.`;
   }
+  if (playbooksFailed) {
+    message += ` ${playbooksFailed} playbook(s) failed — check server log.`;
+  }
+  const hasIssues = scriptFailed > 0 || bindingIssues > 0 || playbooksFailed > 0;
   return {
-    success: scriptFailed === 0 && bindingIssues === 0,
-    title: bindingIssues || scriptFailed ? "Deep copy completed with issues" : "Deep copy complete",
+    success: !hasIssues,
+    title: hasIssues ? "Deep copy incomplete" : "Deep copy complete",
     message,
   };
 }
 
+function showChoiceDialog({
+  title,
+  message,
+  primaryLabel = "Proceed",
+  secondaryLabel = "Other",
+  cancelLabel = "Cancel",
+}) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("choice-dialog");
+    const form = document.getElementById("choice-dialog-form");
+    const titleEl = document.getElementById("choice-dialog-title");
+    const messageEl = document.getElementById("choice-dialog-message");
+    const cancelBtn = document.getElementById("choice-dialog-cancel");
+    const secondaryBtn = document.getElementById("choice-dialog-secondary");
+    const primaryBtn = document.getElementById("choice-dialog-primary");
+    if (!dialog || !form || !titleEl || !messageEl || !cancelBtn || !secondaryBtn || !primaryBtn) {
+      resolve(null);
+      return;
+    }
+
+    let choice = null;
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    primaryBtn.textContent = primaryLabel;
+    secondaryBtn.textContent = secondaryLabel;
+    cancelBtn.textContent = cancelLabel;
+
+    const cleanup = () => {
+      cancelBtn.removeEventListener("click", onCancel);
+      secondaryBtn.removeEventListener("click", onSecondary);
+      form.removeEventListener("submit", onPrimary);
+    };
+    const finish = (value) => {
+      choice = value;
+      dialog.close();
+    };
+    const onCancel = () => finish(null);
+    const onSecondary = () => finish("secondary");
+    const onPrimary = (event) => {
+      event.preventDefault();
+      finish("primary");
+    };
+
+    cancelBtn.addEventListener("click", onCancel);
+    secondaryBtn.addEventListener("click", onSecondary);
+    form.addEventListener("submit", onPrimary);
+    dialog.addEventListener(
+      "close",
+      () => {
+        cleanup();
+        resolve(choice);
+      },
+      { once: true },
+    );
+    dialog.showModal();
+    primaryBtn.focus();
+  });
+}
+
 window.showConfirmDialog = showConfirmDialog;
 window.showOutcomeDialog = showOutcomeDialog;
+window.showChoiceDialog = showChoiceDialog;
 window.summarizeBulkCopyResult = summarizeBulkCopyResult;
 window.summarizeBulkDeleteResult = summarizeBulkDeleteResult;
 window.summarizeComponentCopyResult = summarizeComponentCopyResult;
@@ -471,11 +536,11 @@ function updateListsSelectionCount() {
 
 function initListsGrid() {
   listsTable = new Tabulator("#lists-grid", {
-    height: "420px",
+    height: typeof cptkGridHeight === "function" ? cptkGridHeight("default") : "420px",
     layout: "fitColumns",
     selectableRows: true,
     placeholder: "No cached lists — click Refresh cache",
-    columns: [
+    columns: cptkEnhanceColumns([
       {
         formatter: "rowSelection",
         hozAlign: "center",
@@ -493,10 +558,12 @@ function initListsGrid() {
         width: 80,
         hozAlign: "center",
         formatter: (cell) => (cell.getValue() ? "Yes" : ""),
+        headerFilter: "list",
+        headerFilterParams: { values: { "": "All", Yes: "Yes" }, clearable: true },
       },
       { title: "Description", field: "description", minWidth: 180 },
       { title: "Modified", field: "modified", width: 180 },
-    ],
+    ]),
   });
   listsTable.on("rowSelectionChanged", updateListsSelectionCount);
   listsTable.on("rowDblClick", (_event, row) => {
@@ -892,6 +959,8 @@ async function copySelectedLists(triggerButton = null) {
     const copyProgress = createOperationProgress("Copy lists");
     const data = await copyProgress.runCopy({
       startMessage: `Copying ${listIds.length} list(s) to ${target}…`,
+      wsAction: "lists.copy",
+      payload,
       httpCall: () => api("/api/lists/copy", {
         method: "POST",
         body: JSON.stringify(payload),

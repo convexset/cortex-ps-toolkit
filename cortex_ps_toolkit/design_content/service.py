@@ -38,11 +38,19 @@ def list_cached_items(profile: CredentialProfile | str, asset: AssetKind) -> lis
     return list_cached(resolved, asset)
 
 
-def get_item_body(profile: CredentialProfile | str, asset: AssetKind, item_id: str) -> dict[str, Any]:
+def get_item_body(
+    profile: CredentialProfile | str,
+    asset: AssetKind,
+    item_id: str,
+    *,
+    cache_only: bool = False,
+) -> dict[str, Any]:
     resolved = get_profile(profile) if isinstance(profile, str) else profile
     cached = load_body(resolved, asset, item_id)
     if cached:
         return cached
+    if cache_only:
+        raise KeyError(f"{asset} item not in cache: {item_id!r} on profile {resolved.slug}")
     refresh_asset_cache(resolved, asset)
     cached = load_body(resolved, asset, item_id)
     if cached:

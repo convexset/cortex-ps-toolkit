@@ -29,10 +29,19 @@ from ..credentials import get_profile
 from ..platform_admin.service import refresh_all_cache as refresh_platform_admin_cache
 from ..platform_admin.service import refresh_section_cache as refresh_platform_admin_section
 from ..platform_admin.types import ADMIN_SECTIONS
+from ..lists.copy import copy_lists_to_tenant
+from ..playbooks.copy import copy_playbooks_to_tenant
+from ..playbooks.copy_components import copy_playbook_components_to_tenant
+from ..scripts.copy import copy_scripts_to_tenant
+from .batch_copy_ws import run_batch_copy_job
+from .copy_progress_http import publish_standard_copy_outcome
+from ..playbooks.analysis import analyze_playbook
 from ..playbooks.refactor import execute_refactor
+from ..playbooks.refactor_overwrite import coalesce_overwrite_existing
 from ..playbooks.refactor_workflow import execute_refactor_workflow
 from .copy_notifications import (
     maybe_publish_item_copied_from_progress,
+    publish_deep_copy_complete_notification,
     publish_object_bundle_complete_notification,
 )
 from .delete_notifications import publish_delete_success_notifications
@@ -139,6 +148,161 @@ def _publish_job_progress(job_id: str, action: str, event: dict[str, Any]) -> No
     })
 
 
+async def _run_lists_copy(job_id: str, payload: dict[str, Any]) -> None:
+    await run_batch_copy_job(
+        job_id,
+        payload,
+        action="lists.copy",
+        title="Lists copy",
+        progress_title="Lists Copy Progress",
+        ids_key="list_ids",
+        copy_fn=copy_lists_to_tenant,
+        broadcast=broadcast,
+        publish_job_progress=_publish_job_progress,
+    )
+
+
+async def _run_scripts_copy(job_id: str, payload: dict[str, Any]) -> None:
+    await run_batch_copy_job(
+        job_id,
+        payload,
+        action="scripts.copy",
+        title="Scripts copy",
+        progress_title="Scripts Copy Progress",
+        ids_key="script_ids",
+        copy_fn=copy_scripts_to_tenant,
+        broadcast=broadcast,
+        publish_job_progress=_publish_job_progress,
+    )
+
+
+async def _run_playbooks_copy(job_id: str, payload: dict[str, Any]) -> None:
+    await run_batch_copy_job(
+        job_id,
+        payload,
+        action="playbooks.copy",
+        title="Playbooks copy",
+        progress_title="Playbooks Copy Progress",
+        ids_key="playbook_ids",
+        copy_fn=copy_playbooks_to_tenant,
+        broadcast=broadcast,
+        publish_job_progress=_publish_job_progress,
+    )
+
+
+async def _run_playbooks_analyze(job_id: str, payload: dict[str, Any]) -> None:
+    profile = str(payload.get("profile") or "")
+    playbook_id = str(payload.get("playbook_id") or "")
+    if not profile or not playbook_id:
+        await broadcast({
+            "type": "job.failed",
+            "job_id": job_id,
+            "action": "playbooks.analyze",
+            "error": "profile and playbook_id required",
+        })
+        return
+
+    cache_only = bool(payload.get("cache_only", True))
+    skip_cache_refresh = bool(payload.get("skip_cache_refresh", True))
+
+    await broadcast({
+        "type": "job.started",
+        "job_id": job_id,
+        "action": "playbooks.analyze",
+        "payload": {"profile": profile, "playbook_id": playbook_id},
+    })
+
+    def on_progress(event: dict[str, Any]) -> None:
+        _publish_job_progress(job_id, "playbooks.analyze", event)
+
+    try:
+        result = await asyncio.to_thread(
+            analyze_playbook,
+            profile,
+            playbook_id,
+            cache_only=cache_only,
+            skip_cache_refresh=skip_cache_refresh,
+            on_progress=on_progress,
+        )
+        await broadcast({
+            "type": "job.completed",
+            "job_id": job_id,
+            "action": "playbooks.analyze",
+            "result": result,
+        })
+        root_name = (result.get("root_playbook") or {}).get("name") or playbook_id
+        publish_notification(f"Analysis complete: {root_name}", level="success", auto_dismiss_ms=4500)
+    except Exception as exc:
+        await broadcast({
+            "type": "job.failed",
+            "job_id": job_id,
+            "action": "playbooks.analyze",
+            "error": str(exc),
+        })
+        publish_notification(f"Playbook analysis failed: {exc}", level="error")
+
+
+async def _run_playbooks_copy_components(job_id: str, payload: dict[str, Any]) -> None:
+    source = str(payload.get("source_profile") or "")
+    target = str(payload.get("target_profile") or "")
+    playbook_id = str(payload.get("playbook_id") or "")
+    if not source or not target or not playbook_id:
+        await broadcast({
+            "type": "job.failed",
+            "job_id": job_id,
+            "action": "playbooks.copy_components",
+            "error": "source_profile, target_profile, playbook_id required",
+        })
+        return
+
+    await broadcast({
+        "type": "job.started",
+        "job_id": job_id,
+        "action": "playbooks.copy_components",
+        "payload": payload,
+    })
+    publish_notification(
+        f"Deep playbook copy started: {source} → {target}",
+        level="info",
+        title="Playbook Copy Progress",
+        auto_dismiss_ms=5000,
+    )
+
+    def on_progress(event: dict[str, Any]) -> None:
+        _publish_job_progress(job_id, "playbooks.copy_components", event)
+
+    try:
+        result = await asyncio.to_thread(
+            copy_playbook_components_to_tenant,
+            source,
+            target,
+            playbook_id,
+            overwrite=bool(payload.get("overwrite")),
+            stop_on_conflict=bool(payload.get("stop_on_conflict")),
+            on_progress=on_progress,
+        )
+        await broadcast({
+            "type": "job.completed",
+            "job_id": job_id,
+            "action": "playbooks.copy_components",
+            "result": result,
+        })
+        publish_deep_copy_complete_notification(result, source=source, target=target)
+    except Exception as exc:
+        await broadcast({
+            "type": "job.failed",
+            "job_id": job_id,
+            "action": "playbooks.copy_components",
+            "error": str(exc),
+        })
+        publish_notification(
+            f"Deep playbook copy failed: {exc}",
+            level="error",
+            title="Deep playbook copy",
+            auto_dismiss_ms=0,
+        )
+
+
 async def _run_refactor_execute(job_id: str, payload: dict[str, Any]) -> None:
     profile = str(payload.get("profile") or "")
     if not profile:
@@ -171,6 +335,8 @@ async def _run_refactor_execute(job_id: str, payload: dict[str, Any]) -> None:
             "upload_parent_on_mismatch": bool(payload.get("upload_parent_on_mismatch")),
             "require_match": bool(payload.get("require_match")),
             "force": bool(payload.get("force")),
+            "overwrite_existing": coalesce_overwrite_existing(payload.get("overwrite_existing")),
+            "overwrite_confirmed": bool(payload.get("overwrite_confirmed")),
             "on_progress": on_progress,
         }
         if payload.get("playbook_id"):
@@ -192,6 +358,8 @@ async def _run_refactor_execute(job_id: str, payload: dict[str, Any]) -> None:
         publish_notification(
             f"Refactor {'complete' if result.get('ok') else 'finished with issues'} for {profile}",
             level=level,
+            title="Playbook refactor",
+            auto_dismiss_ms=0,
         )
     except Exception as exc:
         await broadcast({
@@ -200,7 +368,7 @@ async def _run_refactor_execute(job_id: str, payload: dict[str, Any]) -> None:
             "action": "playbooks.refactor.execute",
             "error": str(exc),
         })
-        publish_notification(f"Refactor failed: {exc}", level="error")
+        publish_notification(f"Refactor failed: {exc}", level="error", title="Playbook refactor", auto_dismiss_ms=0)
 
 
 async def _run_refactor_workflow(job_id: str, payload: dict[str, Any]) -> None:
@@ -326,16 +494,20 @@ async def _run_design_content_copy(job_id: str, payload: dict[str, Any]) -> None
                 on_progress=on_progress,
             )
         await broadcast({"type": "job.completed", "job_id": job_id, "action": "design_content.copy", "result": result})
-        if not result.get("executed"):
-            publish_notification(
-                result.get("error") or f"Copy {asset} finished with issues",
-                level="error",
-                title=f"Copy {asset}",
-                auto_dismiss_ms=5000,
-            )
+        publish_standard_copy_outcome(
+            result,
+            title=f"Copy {asset}",
+            source=source,
+            target=target,
+        )
     except Exception as exc:
         await broadcast({"type": "job.failed", "job_id": job_id, "action": "design_content.copy", "error": str(exc)})
-        publish_notification(f"Design content copy failed: {exc}", level="error", auto_dismiss_ms=5000)
+        publish_notification(
+            f"Design content copy failed: {exc}",
+            level="error",
+            title=f"Copy {asset}",
+            auto_dismiss_ms=0,
+        )
 
 
 async def _run_design_content_orchestrate(job_id: str, payload: dict[str, Any]) -> None:
@@ -387,11 +559,11 @@ async def _run_design_content_orchestrate(job_id: str, payload: dict[str, Any]) 
                 result.get("halt_reason") or "Object Bundle copy finished with issues",
                 level="error",
                 title="Object Bundle copy",
-                auto_dismiss_ms=5000,
+                auto_dismiss_ms=0,
             )
     except Exception as exc:
         await broadcast({"type": "job.failed", "job_id": job_id, "action": "design_content.orchestrate", "error": str(exc)})
-        publish_notification(f"Object Bundle copy failed: {exc}", level="error", auto_dismiss_ms=5000)
+        publish_notification(f"Object Bundle copy failed: {exc}", level="error", title="Object Bundle copy", auto_dismiss_ms=0)
 
 
 async def _run_platform_admin_correlation_copy(job_id: str, payload: dict[str, Any]) -> None:
@@ -426,16 +598,20 @@ async def _run_platform_admin_correlation_copy(job_id: str, payload: dict[str, A
                 on_progress=on_progress,
             )
         await broadcast({"type": "job.completed", "job_id": job_id, "action": "platform_admin.correlation_copy", "result": result})
-        if not result.get("executed"):
-            publish_notification(
-                result.get("error") or "Correlation copy finished with issues",
-                level="error",
-                title="Correlation rules copy",
-                auto_dismiss_ms=5000,
-            )
+        publish_standard_copy_outcome(
+            result,
+            title="Correlation rules copy",
+            source=source,
+            target=target,
+        )
     except Exception as exc:
         await broadcast({"type": "job.failed", "job_id": job_id, "action": "platform_admin.correlation_copy", "error": str(exc)})
-        publish_notification(f"Correlation copy failed: {exc}", level="error", auto_dismiss_ms=5000)
+        publish_notification(
+            f"Correlation copy failed: {exc}",
+            level="error",
+            title="Correlation rules copy",
+            auto_dismiss_ms=0,
+        )
 
 
 async def _run_platform_admin_bioc_copy(job_id: str, payload: dict[str, Any]) -> None:
@@ -470,16 +646,10 @@ async def _run_platform_admin_bioc_copy(job_id: str, payload: dict[str, Any]) ->
                 on_progress=on_progress,
             )
         await broadcast({"type": "job.completed", "job_id": job_id, "action": "platform_admin.bioc_copy", "result": result})
-        if not result.get("executed"):
-            publish_notification(
-                result.get("error") or "BIOC copy finished with issues",
-                level="error",
-                title="BIOC copy",
-                auto_dismiss_ms=5000,
-            )
+        publish_standard_copy_outcome(result, title="BIOC copy", source=source, target=target)
     except Exception as exc:
         await broadcast({"type": "job.failed", "job_id": job_id, "action": "platform_admin.bioc_copy", "error": str(exc)})
-        publish_notification(f"BIOC copy failed: {exc}", level="error", auto_dismiss_ms=5000)
+        publish_notification(f"BIOC copy failed: {exc}", level="error", title="BIOC copy", auto_dismiss_ms=0)
 
 
 async def _run_platform_admin_indicator_copy(job_id: str, payload: dict[str, Any]) -> None:
@@ -513,16 +683,15 @@ async def _run_platform_admin_indicator_copy(job_id: str, payload: dict[str, Any
                 on_progress=on_progress,
             )
         await broadcast({"type": "job.completed", "job_id": job_id, "action": "platform_admin.indicator_copy", "result": result})
-        if not result.get("executed"):
-            publish_notification(
-                result.get("error") or "Indicator copy finished with issues",
-                level="error",
-                title="Indicator copy",
-                auto_dismiss_ms=5000,
-            )
+        publish_standard_copy_outcome(result, title="Indicator copy", source=source, target=target)
     except Exception as exc:
         await broadcast({"type": "job.failed", "job_id": job_id, "action": "platform_admin.indicator_copy", "error": str(exc)})
-        publish_notification(f"Indicator copy failed: {exc}", level="error", auto_dismiss_ms=5000)
+        publish_notification(
+            f"Indicator copy failed: {exc}",
+            level="error",
+            title="Indicator copy",
+            auto_dismiss_ms=0,
+        )
 
 
 async def _run_design_content_delete(job_id: str, payload: dict[str, Any]) -> None:
@@ -682,6 +851,26 @@ async def _dispatch_job(message: dict[str, Any]) -> None:
 
     if action == "cache.refresh":
         asyncio.create_task(_run_cache_refresh(job_id, payload))
+        return
+
+    if action == "lists.copy":
+        asyncio.create_task(_run_lists_copy(job_id, payload))
+        return
+
+    if action == "scripts.copy":
+        asyncio.create_task(_run_scripts_copy(job_id, payload))
+        return
+
+    if action == "playbooks.copy":
+        asyncio.create_task(_run_playbooks_copy(job_id, payload))
+        return
+
+    if action == "playbooks.copy_components":
+        asyncio.create_task(_run_playbooks_copy_components(job_id, payload))
+        return
+
+    if action == "playbooks.analyze":
+        asyncio.create_task(_run_playbooks_analyze(job_id, payload))
         return
 
     if action == "playbooks.refactor.execute":

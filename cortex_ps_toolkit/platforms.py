@@ -184,7 +184,7 @@ OPERATIONS: Mapping[str, OperationSpec] = {
             "Refactor playbooks (extract-multi)",
             documented=(Platform.XSOAR6, Platform.XSOAR8, Platform.XSIAM),
             notes=(
-                "Wraps bay/playbook-utils extract-multi: leaf/cluster subs, compare, "
+                "Wraps playbook-utils extract-multi: leaf/cluster subs, compare, "
                 "post-task updates, refactor descriptions, parent copy upload."
             ),
         ),
@@ -192,7 +192,13 @@ OPERATIONS: Mapping[str, OperationSpec] = {
             "playbooks.refactor.update_tasks",
             "Update playbook task error-handling / context sharing",
             documented=(Platform.XSOAR6, Platform.XSOAR8, Platform.XSIAM),
-            notes="Wraps bay/playbook-utils update-playbook-tasks (in-place overwrite).",
+            notes="Wraps playbook-utils update-playbook-tasks (in-place overwrite).",
+        ),
+        _op(
+            "playbooks.refactor.validate_extract",
+            "Validate refactor leaf/cluster extract eligibility",
+            documented=(Platform.XSOAR6, Platform.XSOAR8, Platform.XSIAM),
+            notes="Graph rules via playbook-utils cache; analysis UI Check validity.",
         ),
         _op(
             "playbooks.copy",

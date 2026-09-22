@@ -33,3 +33,9 @@ def test_playbook_cache_documented_on_xsoar8() -> None:
     spec = get_operation("cache.playbooks.refresh")
     assert spec.is_available(Platform.XSOAR8)
     assert spec.is_available(Platform.XSIAM)
+
+
+def test_refactor_validate_extract_registered() -> None:
+    spec = get_operation("playbooks.refactor.validate_extract")
+    assert spec.support_level(Platform.XSIAM) == SupportLevel.DOCUMENTED
+    assert_operation_supported("playbooks.refactor.validate_extract", Platform.XSOAR8)

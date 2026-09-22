@@ -52,16 +52,14 @@ def test_refactor_workflow_api_requires_preset_id(client: TestClient) -> None:
     assert "preset_id" in response.json()["error"].lower()
 
 
-@patch("cortex_ps_toolkit.server.refactor_api.playbook_utils_runtime")
+@patch("cortex_ps_toolkit.server.refactor_api.load_toolkit_playbook_body")
 @patch("cortex_ps_toolkit.server.refactor_api.validate_leaf_extract")
 def test_refactor_validate_extract_leaf_api(
     mock_validate: MagicMock,
-    mock_runtime: MagicMock,
+    mock_load: MagicMock,
     client: TestClient,
 ) -> None:
-    mock_cache = MagicMock()
-    mock_cache.resolve.return_value = {"name": "Test_PB", "tasks": {}}
-    mock_runtime.return_value.__enter__.return_value = (None, None, None, mock_cache, None)
+    mock_load.return_value = {"name": "Test_PB", "tasks": {}}
     mock_validate.return_value = {"ok": True, "reasons": [], "task_id": "2"}
 
     response = client.post(

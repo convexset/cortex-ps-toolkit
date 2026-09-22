@@ -100,9 +100,11 @@ Path rules: [`../lists/README.md`](../lists/README.md). Detail: [`lists.md`](lis
 | `/api/playbooks?profile=` | GET | `playbooks list` | Playbook Tools grid | — (cache) | `playbooks.list` | doc | doc | doc | — | — | — |
 | `/api/playbooks/refresh` | POST | `playbooks refresh` | Refresh (also scripts) | `POST …/playbook/search` | `cache.playbooks.refresh` | doc | doc | doc | exp | exp | exp |
 | `/api/playbooks/{id}/analysis` | GET | `playbooks analyze` | Analysis accordion | Cache bodies + script metadata | `playbooks.metrics` | doc | doc | doc | — | — | — |
+| `/api/playbooks/{id}/analysis/fetch-plan` | GET | — | Analysis (pre-fetch) | — (cache only) | `playbooks.metrics` | doc | doc | doc | — | — | — |
+| `/api/playbooks/refactor/validate-extract` | POST | — | Refactor → Check validity | — (toolkit body cache) | `playbooks.refactor.validate_extract` | doc | doc | doc | — | — | — |
 | `/api/playbooks/refactor/presets` | GET | — | Analysis → Refactor preset picker | — | — | doc | doc | doc | — | — | — |
 | `/api/playbooks/refactor/workflow` | POST | `scripts/benchmark_mfec_refactor.py` | — | `POST …/playbook/save/yaml` | `playbooks.refactor.extract_multi` | doc | doc | doc | — | — | — |
-| `/api/playbooks/refactor/preview` | POST | `playbooks refactor-preview` | Analysis → Refactor | (preflight only) | `playbooks.refactor.extract_multi` | doc | doc | doc | — | — | — |
+| `/api/playbooks/refactor/preview` | POST | `playbooks refactor-preview` | Analysis → Refactor | — (toolkit body cache) | `playbooks.refactor.extract_multi` | doc | doc | doc | — | — | — |
 | `/api/playbooks/refactor/execute` | POST | `playbooks refactor` | Analysis → Run refactor (HTTP fallback) | `POST …/playbook/save/yaml` | `playbooks.refactor.extract_multi` | doc | doc | doc | — | — | — |
 | `/api/playbooks/refactor/update-tasks/preview` | POST | `playbooks update-tasks-preview` | — | (preflight) | `playbooks.refactor.update_tasks` | doc | doc | doc | — | — | — |
 | `/api/playbooks/refactor/update-tasks` | POST | `playbooks update-tasks` | — | `POST …/playbook/save/yaml` | `playbooks.refactor.update_tasks` | doc | doc | doc | — | — | — |
@@ -117,7 +119,9 @@ Path rules: [`../lists/README.md`](../lists/README.md). Detail: [`lists.md`](lis
 
 **Tenant path prefix:** XSOAR 6 uses legacy paths (no `/xsoar/public/v1`). XSOAR 8 uses `/xsoar/public/v1`. XSIAM/XDR/AgentiX use compat `/xsoar/public/v1/…` for search/save and `/public_api/v1/playbooks/*` for zip get/insert on copy.
 
-Refactor wraps [`bay/playbook-utils`](../../../../bay/playbook-utils/AGENTS.md) (`extract-multi`, `update-playbook-tasks`).
+Refactor wraps [`playbook-utils`](../../../../playbook-utils/AGENTS.md) (`extract-multi`, `update-playbook-tasks`). **Validate, preview, and update-tasks preview** read playbooks only from the toolkit cache (`refactor_cache.py`). **Execute** seeds an isolated job cache from toolkit bodies before upload/compare (no bulk search refresh for the source playbook).
+
+Release notes since initial commit: [`CHANGELOG-post-initial-commit.md`](../../CHANGELOG-post-initial-commit.md).
 
 Detail: [`playbooks.md`](playbooks.md)
 
@@ -208,6 +212,9 @@ Asset kinds: `layouts`, `classifiers`, `preprocess`, `incident-fields`, `inciden
 | `/api/design-content/{asset}/delete/preview` | POST | `design-content delete-preview` | — | Platform-specific delete | — |
 | `/api/design-content/{asset}/delete` | POST | `design-content delete` | Object Setup delete | Platform-specific delete | — |
 | `/api/design-content/orchestrate` | POST | `design-content orchestrate` | Run ordered workflow | Ordered multi-asset copy | — |
+| `/api/object-setup/bundles?profile=` | GET, POST | — | Object Setup → saved bundles (per source tenant) | — (collections JSON) | — |
+| `/api/object-setup/bundles/{id}?profile=` | GET, DELETE | — | Load / delete bundle on source tenant | — | — |
+| `/api/object-setup/bundles/resolve` | POST | — | Apply bundle to copy UI | — | — |
 
 Orchestrator order: incident-fields → layouts → incident-types → classifiers → preprocess (optional correlation rules via platform-admin).
 

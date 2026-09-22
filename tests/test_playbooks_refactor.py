@@ -47,11 +47,14 @@ def test_plan_refactor_requires_operations() -> None:
         refactor_mod.plan_refactor("lab", playbook_id="pb-1", leaf_tasks=[], clusters=[])
 
 
-@patch("cortex_ps_toolkit.playbooks.refactor.playbook_utils_runtime")
-def test_plan_refactor_returns_extractions(mock_runtime: MagicMock) -> None:
-    profile = _profile()
-    mock_runtime.return_value.__enter__.return_value = (profile, None, None, MagicMock(), None)
-
+@patch("cortex_ps_toolkit.playbooks.refactor.list_refactor_name_conflicts", return_value=[])
+@patch("cortex_ps_toolkit.playbooks.refactor.load_toolkit_playbook_body")
+@patch("cortex_ps_toolkit.playbooks.refactor.get_profile", return_value=_profile())
+def test_plan_refactor_returns_extractions(
+    mock_profile: MagicMock,
+    mock_load: MagicMock,
+    _mock_conflicts: MagicMock,
+) -> None:
     fake_playbook = {
         "id": "pb-1",
         "name": "Main PB",
@@ -62,8 +65,7 @@ def test_plan_refactor_returns_extractions(mock_runtime: MagicMock) -> None:
         },
         "startTaskId": "10",
     }
-    cache = mock_runtime.return_value.__enter__.return_value[3]
-    cache.resolve.return_value = fake_playbook
+    mock_load.return_value = fake_playbook
 
     _ensure_imported()
     with patch("playbook_utils.graph.check_combined_extract") as mock_check:
@@ -84,6 +86,7 @@ def test_plan_refactor_returns_extractions(mock_runtime: MagicMock) -> None:
         )
 
     assert plan["ok"] is True
+    assert plan["cache_only"] is True
     assert plan["source_playbook"]["name"] == "Main PB"
     assert len(plan["extractions"]) == 2
     assert plan["extractions"][0]["kind"] == "cluster"
@@ -96,7 +99,15 @@ def test_xdr5_refactor_unsupported() -> None:
             refactor_mod.execute_refactor("lab", playbook_id="pb-1", leaf_tasks=["1"])
 
 
+@patch(
+    "cortex_ps_toolkit.playbooks.refactor.plan_refactor",
+    return_value={"existing_targets": [], "ok": True},
+)
+@patch("cortex_ps_toolkit.playbooks.service.refresh_playbooks_cache", return_value={"count": 1})
+@patch("cortex_ps_toolkit.server_config.copy_binding_cache_pause_seconds", return_value=0)
 @patch("cortex_ps_toolkit.playbooks.refactor.read_debug_result", return_value={"ok": True})
+@patch("cortex_ps_toolkit.playbooks.refactor.bootstrap_playbook_utils_cache_from_toolkit", return_value={})
+@patch("cortex_ps_toolkit.playbooks.refactor.playbook_utils_runtime")
 @patch("cortex_ps_toolkit.playbooks.refactor.build_extract_multi_args")
 @patch("cortex_ps_toolkit.playbooks.refactor.temporary_credentials_file")
 @patch("cortex_ps_toolkit.playbooks.refactor.get_profile", return_value=_profile())
@@ -106,9 +117,15 @@ def test_execute_refactor_parallel_mode(
     _mock_profile: MagicMock,
     mock_creds: MagicMock,
     mock_build_args: MagicMock,
+    mock_runtime: MagicMock,
+    _mock_seed: MagicMock,
     _mock_read: MagicMock,
+    _mock_pause: MagicMock,
+    _mock_refresh: MagicMock,
+    _mock_plan: MagicMock,
 ) -> None:
     mock_creds.return_value.__enter__.return_value = MagicMock()
+    mock_runtime.return_value.__enter__.return_value = (_profile(), None, None, MagicMock(), None)
     mock_build_args.return_value = MagicMock()
     cli_mod = MagicMock()
     cli_mod.cmd_extract_multi.return_value = 0
@@ -125,5 +142,6 @@ def test_execute_refactor_parallel_mode(
     )
 
     assert mock_build_args.call_args.kwargs.get("parallel") is True
+    assert mock_build_args.call_args.kwargs.get("compare_after_parent") is False
     assert mock_build_args.call_args.kwargs.get("job_cache_key") == "wf/step-a"
     sys.modules.pop("playbook_utils.cli", None)

@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import time
 from collections import Counter
 from typing import Any, Optional
 
-from ..cache.ensure import ensure_analysis_caches
-from ..cache.pack_meta import get_cached_item_meta, save_item_meta
+from ..ops_log import log_data_write, op_action, op_debug, op_info
+from .analysis_body_fetch import ensure_analysis_downloads
+from .analysis_fetch_plan import plan_analysis_fetch_needs
+from .body_lookup import resolve_playbook_ref
+from .resolver import ProgressCallback
+
+from ..cache.ensure import check_analysis_caches, ensure_analysis_caches
+from ..cache.pack_meta import get_cached_item_meta, pack_meta_write_batch, save_item_meta
 from ..content.item_metadata import item_metadata_row, script_metadata_row
 from ..credentials import CredentialProfile, get_profile
 from ..scripts import api as scripts_api
@@ -17,7 +24,12 @@ from .entity_resolution import (
     sub_playbook_display_name,
 )
 from .flow_graph import build_flow_graphs_for_tree
-from .graph import compute_completion_path_metrics, compute_playbook_task_listings, compute_task_summaries
+from .graph import (
+    build_expanded_graph_context,
+    compute_completion_path_metrics,
+    compute_playbook_task_listings,
+    compute_task_summaries,
+)
 from .resolver import CachePlaybookResolver
 from .yaml_helpers import (
     iter_sub_playbook_refs,
@@ -250,6 +262,7 @@ def _resolve_script_metadata(
     script_id: Optional[str],
     name: str,
     cache_entry: Optional[dict[str, Any]],
+    cache_only: bool = False,
 ) -> dict[str, Any]:
     lookup_id = str(script_id or (cache_entry or {}).get("id") or name or "")
     cached_meta = get_cached_item_meta(profile, kind="scripts", item_id=lookup_id) if lookup_id else None
@@ -266,9 +279,18 @@ def _resolve_script_metadata(
     if cache_entry and cache_entry.get("system") is True:
         meta = script_metadata_row(cache_entry=cache_entry)
     else:
+        from ..scripts.body_cache import load_script_body, save_script_body
+
         if lookup_id:
+            document = load_script_body(profile, lookup_id)
+            if document is not None:
+                op_debug("CACHE script body %r (%s) — local file", name, lookup_id)
+        if document is None and lookup_id and not cache_only:
             try:
+                op_info("FETCH script body %r (%s) from tenant", name, lookup_id)
                 document = scripts_api.get_script(profile, lookup_id)
+                path = save_script_body(profile, lookup_id, document)
+                log_data_write("script body", detail=f"{name} ({lookup_id}) → {path}")
             except Exception:
                 document = None
         meta = script_metadata_row(cache_entry=cache_entry, document=document)
@@ -288,6 +310,7 @@ def _resolve_playbook_metadata(
     *,
     playbook_id: str,
     cache_entry: Optional[dict[str, Any]] = None,
+    cache_only: bool = False,
 ) -> dict[str, Any]:
     cached_meta = get_cached_item_meta(profile, kind="playbooks", item_id=playbook_id)
     if cached_meta:
@@ -313,13 +336,22 @@ def _enrich_playbooks_in_tree(
     profile: CredentialProfile,
     playbooks_in_tree: list[dict[str, Any]],
     resolver: CachePlaybookResolver,
+    *,
+    cache_only: bool = False,
 ) -> list[dict[str, Any]]:
     enriched: list[dict[str, Any]] = []
     for entry in playbooks_in_tree:
         pb_id = str(entry.get("id") or "")
         row = dict(entry)
         if pb_id:
-            row.update(_resolve_playbook_metadata(profile, resolver, playbook_id=pb_id))
+            row.update(
+                _resolve_playbook_metadata(
+                    profile,
+                    resolver,
+                    playbook_id=pb_id,
+                    cache_only=cache_only,
+                )
+            )
         enriched.append(row)
     return enriched
 
@@ -328,6 +360,8 @@ def _collect_scripts_and_commands(
     playbooks: list[dict[str, Any]],
     resolver: CachePlaybookResolver,
     profile_slug: str,
+    *,
+    cache_only: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     script_counts: Counter[str] = Counter()
     script_ids_by_name: dict[str, str] = {}
@@ -377,6 +411,7 @@ def _collect_scripts_and_commands(
             script_id=script_id,
             name=name,
             cache_entry=cached,
+            cache_only=cache_only,
         )
         row = {
             "name": name,
@@ -409,26 +444,127 @@ def analyze_playbook(
     playbook_id: str,
     *,
     resolver: Optional[CachePlaybookResolver] = None,
+    cache_only: bool = False,
+    skip_cache_refresh: bool = False,
+    on_progress: Optional[ProgressCallback] = None,
 ) -> dict[str, Any]:
-    """Analyze playbook structure, tasks, scripts, and commands from tenant cache."""
+    """Analyze playbook structure, tasks, scripts, and commands from tenant cache.
+
+    When ``cache_only`` is true, playbook/script **indexes** are not refreshed from the tenant
+    before analysis. Missing playbook YAML and script bodies are still downloaded in parallel
+    from the tenant when the cached index lists them but local body files are absent or stale.
+    """
     resolved = get_profile(profile)
-    cache_info = ensure_analysis_caches(resolved)
+    canonical_id, _index_meta, display_name = resolve_playbook_ref(
+        resolved,
+        playbook_id=playbook_id,
+        playbook_name=playbook_id,
+    )
+    root_ref = canonical_id or playbook_id
+    with op_action("Playbook analysis %s (%s)", display_name or root_ref, resolved.slug):
+        with pack_meta_write_batch(resolved):
+            return _analyze_playbook_impl(
+                resolved,
+                profile,
+                root_ref,
+                playbook_id=playbook_id,
+                cache_only=cache_only,
+                skip_cache_refresh=skip_cache_refresh,
+                resolver=resolver,
+                on_progress=on_progress,
+            )
+
+
+def _analyze_playbook_impl(
+    resolved: CredentialProfile,
+    profile: str,
+    root_ref: str,
+    *,
+    playbook_id: str,
+    cache_only: bool,
+    skip_cache_refresh: bool,
+    resolver: Optional[CachePlaybookResolver],
+    on_progress: Optional[ProgressCallback],
+) -> dict[str, Any]:
+    if skip_cache_refresh or cache_only:
+        cache_info = check_analysis_caches(resolved)
+    else:
+        cache_info = ensure_analysis_caches(resolved)
+    fetch_plan = plan_analysis_fetch_needs(resolved, root_ref)
+    needed = int(fetch_plan.get("playbook_bodies_needed_count") or 0)
+    cached = int(fetch_plan.get("playbook_bodies_cached_count") or 0)
+    op_info(
+        "Analysis fetch plan — %s: %d cached locally, %d tenant download(s) expected",
+        root_ref,
+        cached,
+        needed,
+    )
+    if on_progress:
+        if cache_info.get("any_stale"):
+            on_progress(
+                {
+                    "phase": "cache_status",
+                    "stale_scopes": list(cache_info.get("stale_scopes") or []),
+                },
+            )
+        on_progress({"phase": "fetch_plan", **fetch_plan})
+    prefetch_summary: dict[str, Any] = {
+        "playbooks_fetched": [],
+        "playbooks_fetched_count": 0,
+        "scripts_fetched": [],
+        "scripts_fetched_count": 0,
+    }
+    if resolver is None:
+        needs_bodies = int(fetch_plan.get("playbook_bodies_needed_count") or 0) > 0
+        if on_progress and needs_bodies:
+            on_progress({"phase": "prefetch_bodies", "status": "running"})
+        if needs_bodies:
+            op_info("Analysis prefetch — downloading missing playbook/script bodies for %s", root_ref)
+        prefetch_summary = ensure_analysis_downloads(
+            resolved,
+            root_ref,
+            on_progress=on_progress,
+        )
+        fetch_plan = prefetch_summary.get("final_fetch_plan") or fetch_plan
+        if on_progress and (
+            needs_bodies
+            or int(prefetch_summary.get("scripts_fetched_count") or 0) > 0
+        ):
+            on_progress({"phase": "prefetch_bodies", "status": "complete", **prefetch_summary})
     script_by_id, script_by_name = script_index_maps(resolved)
-    resolver = resolver or CachePlaybookResolver(resolved)
-    root = resolver.load(playbook_id)
+    resolver = resolver or CachePlaybookResolver(
+        resolved,
+        allow_live_fetch=not cache_only,
+        on_progress=on_progress,
+        body_stale_policy="analysis",
+    )
+    needed_count = int(fetch_plan.get("playbook_bodies_needed_count") or 0)
+    if needed_count:
+        resolver.set_fetch_total(needed_count)
+    root = resolver.load(root_ref, playbook_name=playbook_id if root_ref != playbook_id else None)
     root_id, root_name = playbook_identity(root)
 
+    op_info("Analysis step — walk playbook tree for %s", root_name or root_ref)
     playbooks_in_tree, missing_sub_playbooks = _walk_playbooks_in_tree(root, resolver)
-    playbooks_in_tree = _enrich_playbooks_in_tree(resolved, playbooks_in_tree, resolver)
+    playbooks_in_tree = _enrich_playbooks_in_tree(
+        resolved,
+        playbooks_in_tree,
+        resolver,
+        cache_only=cache_only,
+    )
     occurrences = _count_playbook_occurrences(root, resolver)
+    op_info("Analysis step — structure tree/graph for %s", root_name or root_ref)
     structure_tree = build_structure_tree_lines(root, resolver)
     structure_graph = build_structure_graph(root, resolver)
+    op_info("Analysis step — expanded execution graph for %s", root_name or root_ref)
+    graph_context = build_expanded_graph_context(root, resolver)
     flow_graphs = build_flow_graphs_for_tree(
         playbooks_in_tree,
         root,
         resolver,
         script_by_id=script_by_id,
         script_by_name=script_by_name,
+        graph_context=graph_context,
     )
 
     task_summary_reachable, task_summary_unreachable, task_summary, task_reachability_totals = compute_task_summaries(
@@ -437,6 +573,7 @@ def analyze_playbook(
         resolver,
         script_by_id=script_by_id,
         script_by_name=script_by_name,
+        graph_context=graph_context,
     )
     playbook_task_listings = compute_playbook_task_listings(
         playbooks_in_tree,
@@ -444,13 +581,16 @@ def analyze_playbook(
         resolver,
         script_by_id=script_by_id,
         script_by_name=script_by_name,
+        graph_context=graph_context,
     )
-    completion_paths = compute_completion_path_metrics(root, resolver)
+    completion_paths = compute_completion_path_metrics(root, resolver, graph_context=graph_context)
 
+    op_info("Analysis step — scripts and commands for %s", root_name or root_ref)
     scripts_used, integration_commands_used, unresolved_scripts = _collect_scripts_and_commands(
         playbooks_in_tree,
         resolver,
         profile,
+        cache_only=cache_only,
     )
 
     playbook_ids = [str(entry.get("id") or "") for entry in playbooks_in_tree if entry.get("id")]
@@ -483,17 +623,37 @@ def analyze_playbook(
         playbooks_in_tree=playbooks_in_tree,
     )
 
+    op_info("Analysis step — refactor task catalog for %s", root_name or root_ref)
     refactor_task_catalog: list[dict[str, Any]] = []
     try:
         from .refactor_graph_validation import build_refactor_task_catalog
 
+        catalog_t0 = time.monotonic()
         refactor_task_catalog = build_refactor_task_catalog(root)
+        op_info(
+            "Analysis step — refactor catalog done for %s (%d task(s), %.2fs)",
+            root_name or root_ref,
+            len(refactor_task_catalog),
+            time.monotonic() - catalog_t0,
+        )
     except Exception:
         refactor_task_catalog = []
 
     return {
         "profile": profile,
+        "cache_only": cache_only,
         "cache": cache_info,
+        "fetch_plan": fetch_plan,
+        "fetch_summary": {
+            "playbooks_fetched": list(prefetch_summary.get("playbooks_fetched") or [])
+            + list(resolver.fetched_playbooks),
+            "playbooks_fetched_count": int(prefetch_summary.get("playbooks_fetched_count") or 0)
+            + len(resolver.fetched_playbooks),
+            "scripts_fetched": list(prefetch_summary.get("scripts_fetched") or []),
+            "scripts_fetched_count": int(prefetch_summary.get("scripts_fetched_count") or 0),
+            "playbooks_restamped": list(resolver.restamped_playbooks),
+            "playbooks_restamped_count": len(resolver.restamped_playbooks),
+        },
         "root_playbook": {
             "id": root_id,
             "name": root_name,

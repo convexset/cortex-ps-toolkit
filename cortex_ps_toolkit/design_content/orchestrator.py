@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from ..core.batch_copy_progress import chain_progress
 from ..core.long_op_progress import LongOperationProgress
+from ..core.staged_progress import StagedProgressReporter
 from ..credentials import get_profile
+from ..ops_log import op_action
 from .copy import copy_assets_to_tenant
 from .types import ORCHESTRATOR_ASSET_ORDER, AssetKind
 
@@ -46,53 +49,76 @@ def execute_cross_tenant_workflow(
             "status": "pending",
         })
 
-    with LongOperationProgress(on_progress, action="design_content.orchestrate") as progress:
-        progress.set_in_flight(pending)
-        for step in pending:
-            asset = str(step["asset"])
-            item_ids = [str(item) for item in step["item_ids"]]
-            progress.set_current(asset=asset, item_count=len(item_ids), status="running")
-            progress.set_in_flight([
-                {**item, "status": "running" if item["asset"] == asset else item.get("status", "pending")}
-                for item in pending
-            ])
+    stage_labels = [f"Copy {step['asset']}" for step in pending] + ["Finalize Object Bundle"]
+    staged = StagedProgressReporter(
+        stage_labels,
+        title="Object Bundle Copy Progress",
+        on_progress=on_progress,
+        operation="design_content.orchestrate",
+    )
+    combined_progress = chain_progress(on_progress)
 
-            if asset == "correlation-rules":
-                from ..platform_admin.copy import copy_correlation_rules_to_tenant
+    def _asset_progress(event: dict[str, Any]) -> None:
+        if event.get("phase") == "stage_complete":
+            return
+        if on_progress:
+            on_progress(event)
 
-                result = copy_correlation_rules_to_tenant(
-                    source_profile,
-                    target_profile,
-                    item_ids,
-                    overwrite=overwrite,
-                    stop_on_conflict=stop_on_conflict,
-                    name_suffix=name_suffix,
-                    on_progress=on_progress,
-                )
-            else:
-                result = copy_assets_to_tenant(
-                    source_profile,
-                    target_profile,
-                    asset,  # type: ignore[arg-type]
-                    item_ids,
-                    overwrite=overwrite,
-                    stop_on_conflict=stop_on_conflict,
-                    name_suffix=name_suffix,
-                    prefer_direct_on_xsoar6=prefer_direct_on_xsoar6,
-                    on_progress=on_progress,
-                )
+    with op_action(
+        "Object Bundle copy %s → %s (%d asset section(s))",
+        source.slug,
+        target.slug,
+        len(pending),
+    ):
+        with LongOperationProgress(combined_progress, action="design_content.orchestrate") as progress:
+            progress.set_in_flight(pending)
+            for step in pending:
+                asset = str(step["asset"])
+                item_ids = [str(item) for item in step["item_ids"]]
+                progress.set_current(asset=asset, item_count=len(item_ids), status="running")
+                progress.set_in_flight([
+                    {**item, "status": "running" if item["asset"] == asset else item.get("status", "pending")}
+                    for item in pending
+                ])
 
-            asset_results[asset] = result
-            step["status"] = "completed" if result.get("executed") else "failed"
-            progress.mark_completed({"asset": asset, "executed": result.get("executed")})
+                if asset == "correlation-rules":
+                    from ..platform_admin.copy import copy_correlation_rules_to_tenant
 
-            if not result.get("executed"):
-                halted = True
-                halt_reason = result.get("error") or f"failed on {asset}"
-                if stop_on_conflict:
-                    break
+                    result = copy_correlation_rules_to_tenant(
+                        source_profile,
+                        target_profile,
+                        item_ids,
+                        overwrite=overwrite,
+                        stop_on_conflict=stop_on_conflict,
+                        name_suffix=name_suffix,
+                        on_progress=_asset_progress,
+                    )
+                else:
+                    result = copy_assets_to_tenant(
+                        source_profile,
+                        target_profile,
+                        asset,  # type: ignore[arg-type]
+                        item_ids,
+                        overwrite=overwrite,
+                        stop_on_conflict=stop_on_conflict,
+                        name_suffix=name_suffix,
+                        prefer_direct_on_xsoar6=prefer_direct_on_xsoar6,
+                        on_progress=_asset_progress,
+                    )
 
-        progress.set_current(status="finished", halted=halted)
+                asset_results[asset] = result
+                step["status"] = "completed" if result.get("executed") else "failed"
+                progress.mark_completed({"asset": asset, "executed": result.get("executed")})
+
+                if not result.get("executed"):
+                    halted = True
+                    halt_reason = result.get("error") or f"failed on {asset}"
+                    if stop_on_conflict:
+                        break
+                staged.complete_stage(f"Copy {asset}")
+
+            progress.set_current(status="finished", halted=halted)
+            staged.complete_stage("Finalize Object Bundle")
 
     return {
         "source_profile": source.slug,

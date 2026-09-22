@@ -60,6 +60,31 @@ def test_resolve_script_task_bindings_rewrites_uuid_to_script_name() -> None:
     assert "scriptId" not in inner
 
 
+def test_resolve_playbook_task_bindings_resolves_source_id_via_id_to_name_index() -> None:
+    playbook = {
+        "tasks": {
+            "2": {
+                "type": "playbook",
+                "task": {
+                    "name": "Call sub",
+                    "playbookId": "3f95cf6c-2015-405b-bf97-7fee6c54d25d",
+                },
+            }
+        }
+    }
+    unresolved = resolve_playbook_task_bindings(
+        playbook,
+        name_to_id={"[REFACTOR-S] Sub": "35c99fcd-c73a-411c-8725-3d1412ed1c7e"},
+        id_to_name={
+            "35c99fcd-c73a-411c-8725-3d1412ed1c7e": "[REFACTOR-S] Sub",
+            "3f95cf6c-2015-405b-bf97-7fee6c54d25d": "[REFACTOR-S] Sub",
+        },
+    )
+    assert unresolved == []
+    inner = playbook["tasks"]["2"]["task"]
+    assert inner["playbookId"] == "35c99fcd-c73a-411c-8725-3d1412ed1c7e"
+
+
 def test_resolve_playbook_task_bindings_prefers_name_when_id_missing_from_cache() -> None:
     playbook = {
         "tasks": {

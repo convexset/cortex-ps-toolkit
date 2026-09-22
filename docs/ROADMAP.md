@@ -27,7 +27,7 @@ Phased delivery: **Python utilities and CLIs first**, local web application last
 | Playbook cache refresh + index | `playbooks/cache.py` |
 | CLI: `credentials`, `cache refresh`, `playbooks list` | `cli.py` |
 
-**Reuse:** port/adapt from `bay/playbook-utils` (`credentials.py`, `cache.py`, `client.py`) with cache key change.
+**Reuse:** port/adapt from `playbook-utils` (`credentials.py`, `cache.py`, `client.py`) with cache key change.
 
 **Tests:** offline fixtures; optional live mark against lab tenant.
 

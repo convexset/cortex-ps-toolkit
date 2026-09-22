@@ -74,13 +74,6 @@ function initSystemAdminUi() {
     return result;
   }
 
-  function showActionResult(result) {
-    const el = document.getElementById("system-admin-action-result");
-    if (!el) return;
-    el.textContent = JSON.stringify(result, null, 2);
-    el.classList.remove("hidden");
-  }
-
   function gridColumns() {
     const selection = {
       formatter: "rowSelection",
@@ -90,8 +83,9 @@ function initSystemAdminUi() {
       frozen: true,
       title: "",
     };
+    let cols;
     if (activeSection === "rbac-users") {
-      return [
+      cols = [
         selection,
         { title: "Email", field: "user_email", minWidth: 220 },
         { title: "Name", field: "name", minWidth: 160 },
@@ -103,12 +97,13 @@ function initSystemAdminUi() {
         },
         { title: "Type", field: "user_type", width: 120 },
       ];
+      return cptkEnhanceColumns(cols);
     }
     if (activeSection === "api-keys") {
       const formatEpoch = typeof formatEpochMillis === "function"
         ? formatEpochMillis
         : (value, emptyLabel = "—") => (value == null || value === "" ? emptyLabel : String(value));
-      return [
+      cols = [
         selection,
         {
           title: "Key ID",
@@ -135,22 +130,25 @@ function initSystemAdminUi() {
         { title: "Created by", field: "created_by", minWidth: 160 },
         { title: "Security", field: "security_level", width: 110 },
       ];
+      return cptkEnhanceColumns(cols);
     }
     if (activeSection === "rbac-groups") {
-      return [
+      cols = [
         selection,
         { title: "Group", field: "id", minWidth: 180 },
         { title: "Pretty name", field: "name", minWidth: 180 },
         { title: "Description", field: "description", minWidth: 200 },
       ];
+      return cptkEnhanceColumns(cols);
     }
-    return [
+    cols = [
       selection,
       { title: "ID", field: "id", minWidth: 160 },
       { title: "Name", field: "name", minWidth: 180 },
       { title: "Type / Role", field: "type", width: 140 },
       { title: "Extra", field: "role", width: 120 },
     ];
+    return cptkEnhanceColumns(cols);
   }
 
   function applyGridColumns() {
@@ -160,7 +158,7 @@ function initSystemAdminUi() {
 
   function initGrid() {
     table = new Tabulator("#system-admin-grid", {
-      height: "420px",
+      height: typeof cptkGridHeight === "function" ? cptkGridHeight("default") : "420px",
       layout: "fitColumns",
       selectableRows: true,
       placeholder: "No cached data — click Refresh",
@@ -250,7 +248,9 @@ function initSystemAdminUi() {
       }),
       "Deleting…",
     );
-    showActionResult(result);
+    if (typeof showActionOutcome === "function") {
+      showActionOutcome("system-admin-action-result", result, { itemLabel: "API key", operation: "delete" });
+    }
     await refreshCache();
   }
 
@@ -282,7 +282,9 @@ function initSystemAdminUi() {
       }),
       "Generating API key…",
     );
-    showActionResult(result);
+    if (typeof showActionOutcome === "function") {
+      showActionOutcome("system-admin-action-result", result, { itemLabel: "API key", operation: "generic" });
+    }
     await loadForActiveProfile();
   }
 

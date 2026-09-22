@@ -18,7 +18,6 @@ from ..core.client import TenantApiError
 from ..credentials import get_profile
 from ..content_capabilities import profile_capabilities
 from ..lists.cache import load_lists_index
-from .copy_notifications import publish_copy_success_notifications
 from .delete_notifications import publish_delete_success_notifications
 from ..lists.copy import copy_lists_to_tenant, plan_lists_copy
 from ..lists.delete import delete_lists, plan_lists_delete
@@ -50,6 +49,7 @@ from . import lists_api
 from . import scripts_api
 from . import refactor_api
 from . import design_content_api
+from . import object_setup_bundles_api
 from . import platform_admin_api
 from . import vault_api
 from .cache_api import api_cache_status, api_settings_get, api_settings_patch
@@ -182,8 +182,13 @@ async def api_lists_delete(request: Request) -> JSONResponse:
 
 async def api_lists_copy(request: Request) -> JSONResponse:
     try:
+        from ..core.batch_copy_progress import chain_progress
+        from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
+
         body = await read_json(request)
         source, target, list_ids, overwrite, stop_on_conflict = _parse_lists_copy_body(body)
+        title = "Lists copy"
+        on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
             copy_lists_to_tenant,
             source,
@@ -191,27 +196,67 @@ async def api_lists_copy(request: Request) -> JSONResponse:
             list_ids,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            on_progress=on_progress,
         )
-        if not result.get("aborted"):
-            publish_copy_success_notifications(
-                result,
-                title="Lists copy",
-                source=source,
-                target=target,
-            )
+        publish_standard_copy_outcome(result, title=title, source=source, target=target)
         return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
         return error_response(exc, status)
 
 
-async def api_playbooks_analysis(request: Request) -> JSONResponse:
+async def api_playbooks_analysis_fetch_plan(request: Request) -> JSONResponse:
     profile = request.query_params.get("profile", "")
     playbook_id = request.path_params.get("playbook_id", "")
     if not profile or not playbook_id:
         return JSONResponse({"error": "profile and playbook_id required"}, status_code=400)
     try:
-        result = await run_sync(analyze_playbook, profile, playbook_id)
+        from ..playbooks.analysis_fetch_plan import plan_analysis_fetch_needs
+
+        from ..ops_log import log_data_read, op_info
+
+        plan = await run_sync(plan_analysis_fetch_needs, profile, playbook_id)
+        needed = int(plan.get("playbook_bodies_needed_count") or 0)
+        cached = int(plan.get("playbook_bodies_cached_count") or 0)
+        op_info(
+            "Analysis fetch-plan %s on %s — %d cached, %d download(s) expected",
+            playbook_id,
+            profile,
+            cached,
+            needed,
+        )
+        log_data_read(
+            "analysis fetch-plan",
+            detail=f"{playbook_id} profile={profile}",
+            payload={
+                "playbook_bodies_needed_count": needed,
+                "playbook_bodies_cached_count": cached,
+                "stale_scopes": plan.get("stale_scopes"),
+            },
+        )
+        return JSONResponse(plan)
+    except (UnsupportedOperation, KeyError, ValueError) as exc:
+        status = 400 if isinstance(exc, UnsupportedOperation) else 404
+        return error_response(exc, status)
+
+
+async def api_playbooks_analysis(request: Request) -> JSONResponse:
+    profile = request.query_params.get("profile", "")
+    playbook_id = request.path_params.get("playbook_id", "")
+    cache_only = request.query_params.get("cache_only", "").lower() in ("1", "true", "yes")
+    skip_cache_refresh = request.query_params.get("skip_cache_refresh", "").lower() in ("1", "true", "yes")
+    if cache_only:
+        skip_cache_refresh = True
+    if not profile or not playbook_id:
+        return JSONResponse({"error": "profile and playbook_id required"}, status_code=400)
+    try:
+        result = await run_sync(
+            analyze_playbook,
+            profile,
+            playbook_id,
+            cache_only=cache_only,
+            skip_cache_refresh=skip_cache_refresh,
+        )
         return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
@@ -253,6 +298,21 @@ async def api_playbooks_copy_components(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
         source, target, playbook_id, overwrite, stop_on_conflict = _parse_playbook_components_body(body)
+        from .copy_notifications import publish_deep_copy_complete_notification
+
+        def on_progress(event: dict[str, Any]) -> None:
+            if event.get("phase") != "stage_complete":
+                return
+            from ..core.staged_progress import publish_staged_progress
+
+            publish_staged_progress(
+                title="Playbook Copy Progress",
+                stage=int(event["stage"]),
+                stage_total=int(event["stage_total"]),
+                stage_label=str(event.get("stage_label") or event.get("step") or "Step"),
+                elapsed_seconds=float(event.get("elapsed_seconds") or 0),
+            )
+
         result = await run_sync(
             copy_playbook_components_to_tenant,
             source,
@@ -260,7 +320,9 @@ async def api_playbooks_copy_components(request: Request) -> JSONResponse:
             playbook_id,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            on_progress=on_progress,
         )
+        publish_deep_copy_complete_notification(result, source=source, target=target)
         return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
@@ -344,9 +406,19 @@ async def _app_lifespan(_app: Starlette):
 
 
 def create_app() -> Starlette:
-    from ..ops_log import configure_ops_logging
+    from ..ops_log import configure_ops_logging, op_info
+    from ..server_config import load_server_config, resolve_server_config_path, server_log_level_name
+    from .logging_middleware import ToolkitLoggingMiddleware
 
     configure_ops_logging()
+    server_cfg = load_server_config()
+    config_path = resolve_server_config_path()
+    op_info(
+        "Server config loaded from %s (log=%s, ttl=%sm)",
+        config_path or "built-in defaults",
+        server_log_level_name(),
+        server_cfg.get("threshold_ttl_in_min"),
+    )
     static_dir = package_root() / "web" / "static"
     routes: list[Any] = [
         Route("/", index),
@@ -379,6 +451,11 @@ def create_app() -> Starlette:
             methods=["GET"],
         ),
         Route("/api/playbooks/refresh", make_refresh_handler(refresh_playbooks_cache_required), methods=["POST"]),
+        Route(
+            "/api/playbooks/{playbook_id}/analysis/fetch-plan",
+            api_playbooks_analysis_fetch_plan,
+            methods=["GET"],
+        ),
         Route(
             "/api/playbooks/{playbook_id}/analysis",
             api_playbooks_analysis,
@@ -584,6 +661,31 @@ def create_app() -> Starlette:
             methods=["POST"],
         ),
         Route(
+            "/api/object-setup/bundles",
+            object_setup_bundles_api.api_object_setup_bundles_list,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/object-setup/bundles",
+            object_setup_bundles_api.api_object_setup_bundles_save,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/object-setup/bundles/resolve",
+            object_setup_bundles_api.api_object_setup_bundles_resolve,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/object-setup/bundles/{bundle_id}",
+            object_setup_bundles_api.api_object_setup_bundles_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/object-setup/bundles/{bundle_id}",
+            object_setup_bundles_api.api_object_setup_bundles_delete,
+            methods=["DELETE"],
+        ),
+        Route(
             "/api/platform-admin/{section}",
             platform_admin_api.api_platform_admin_list,
             methods=["GET"],
@@ -686,6 +788,7 @@ def create_app() -> Starlette:
         routes.append(Mount("/static", DevNoCacheStaticFiles(directory=str(static_dir)), name="static"))
 
     app = Starlette(routes=routes, lifespan=_app_lifespan)
+    app.add_middleware(ToolkitLoggingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:*", "http://localhost:*"],
