@@ -225,13 +225,13 @@ Asset kinds: `layouts`, `classifiers`, `preprocess`, `incident-fields`, `inciden
 | `/api/object-setup/bundles?profile=` | GET, POST | — | Object Setup → saved bundles (per source tenant) | — (collections JSON) | — |
 | `/api/object-setup/bundles/{id}?profile=` | GET, DELETE | — | Load / delete bundle on source tenant | — | — |
 | `/api/object-setup/bundles/resolve` | POST | — | Apply bundle to copy UI | — | — |
-| `/api/bundles?profile=` | GET, POST | — | Bundles → saved presets (alias of object-setup storage) | — (collections JSON) | — |
+| `/api/bundles?profile=` | GET, POST | `bundles resolve` (items file only) | Bundles → saved presets (alias of object-setup storage) | — (collections JSON) | — |
 | `/api/bundles/{id}?profile=` | GET, DELETE | — | Load / delete saved preset | — | — |
 | `/api/bundles/resolve` | POST | — | Resolve basket members on source | — | — |
-| `/api/bundles/copy/preview` | POST | — | Bundles → copy to target (operation plan) | Multi-phase copy plan | — |
-| `/api/bundles/copy` | POST | — | Execute bundle copy | Integrations → scripts → shallow playbooks → lists → design orchestrator; optional `post_copy_diff` on scripts/playbooks/lists | [`bundles.md`](bundles.md) |
-| `/api/bundles/export/preview` | POST | — | Plan portable ZIP (sections, counts) | Resolve-only | — |
-| `/api/bundles/export` | POST | — | Download `application/zip` bundle export | Fetch all members; fail if missing | — |
+| `/api/bundles/copy/preview` | POST | `bundles copy-preview` | Bundles → copy to target (operation plan) | Multi-phase copy plan | [`bundles.md`](bundles.md) |
+| `/api/bundles/copy` | POST | `bundles copy` | Execute bundle copy | Integrations → scripts → shallow playbooks → lists → design orchestrator; optional `post_copy_diff` | [`bundles.md`](bundles.md) |
+| `/api/bundles/export/preview` | POST | `bundles export-preview` | Plan portable ZIP (sections, counts) | Resolve-only | [`bundles.md`](bundles.md) |
+| `/api/bundles/export` | POST | `bundles export` | Download `application/zip` bundle export | Fetch all members; fail if missing | [`bundles.md`](bundles.md) |
 | `/api/bundles/playbook-dependencies` | POST | — | Scan scripts + sub-playbooks for playbooks in basket | Playbook analysis (cache) | [`bundles.md`](bundles.md) |
 | `/api/portable-export-policy` | GET | `portable-export show-policy` | — | Code-only export rules introspection | [`PORTABLE_EXPORT_FIELDS.md`](../../PORTABLE_EXPORT_FIELDS.md) |
 
@@ -288,7 +288,8 @@ Sections: `correlation-rules` (Object Setup), `biocs` + `indicators` (Indicators
 | `platform_admin.indicator_delete` | client → server | `platform-admin delete-indicators` | Indicators IOC delete | Indicator delete |
 | `cache.refresh` scope `integrations` | client → server | — | Integrations refresh | Elective refresh; integration sub-scopes parallelized |
 | `cache.refresh` scope `all` | client → server | — | Full refresh | playbooks + scripts + lists + integrations (parallel where independent) |
-| `bundles.copy` | client → server | — | Bundles (optional; UI uses HTTP today) | Same payload as `POST /api/bundles/copy`; streams `job.progress` |
+| `bundles.copy` | client → server | — | Bundles copy | Same payload as `POST /api/bundles/copy`; UI prefers WS when connected; streams `job.progress` |
+| `integrations.copy` | client → server | `integrations copy` | Integrations copy | Same payload as `POST /api/integrations/copy`; streams `job.progress` |
 | `playbooks.refactor.execute` | client → server | `playbooks refactor` | Analysis → Run refactor | Long-running extract-multi; streams `job.progress` |
 | `playbooks.refactor.workflow` | client → server | benchmark script | — | Clear + multi-step preset; streams `job.progress` |
 | `job.progress` | server → client | — | Toasts / refactor panel | Step events + ~30s heartbeats (`phase=heartbeat`, `in_flight`, `current`, `elapsed_seconds`) |

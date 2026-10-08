@@ -148,14 +148,31 @@ def plan_bundle_copy(
         {"label": "Phase 4: lists (if any)", "automated": True},
         {"label": "Phase 5: design bundle import", "automated": True},
     ]
-    return wrap_copy_plan(
+    binding_table: list[dict[str, Any]] = []
+    for sub in sub_plans:
+        if sub.get("phase") == "playbooks":
+            binding_table = list((sub.get("plan") or {}).get("binding_table") or [])
+            break
+    plan = wrap_copy_plan(
         legacy,
         operation="bundles.copy",
         mode=opts["copy_mode"],
         rename_suffix=opts["rename_suffix"],
         extra_steps=extra_steps,
         extra_warnings=warnings,
+        binding_table=binding_table or None,
     )
+    if sub_plans:
+        plan["sub_plans"] = [
+            {
+                "phase": str(sub.get("phase") or ""),
+                "counts": (sub.get("plan") or {}).get("counts"),
+                "would_abort": (sub.get("plan") or {}).get("would_abort"),
+                "item_count": len((sub.get("plan") or {}).get("items") or []),
+            }
+            for sub in sub_plans
+        ]
+    return plan
 
 
 def copy_bundle_to_tenant(
@@ -212,6 +229,7 @@ def copy_bundle_to_tenant(
             source_profile,
             target_profile,
             integration_ids,
+            post_copy_diff=post_copy_diff,
             **integration_copy_plan_kwargs(opts),
         )
     if script_ids:
@@ -262,8 +280,12 @@ def copy_bundle_to_tenant(
             raw_selections,
             overwrite=opts["overwrite"],
             stop_on_conflict=opts["stop_on_conflict"],
+            copy_mode=opts["copy_mode"],
+            rename_suffix=opts["rename_suffix"],
+            rename_map=dict(opts["rename_map"]),
             include_correlation_rules=bool(correlation_rule_names),
             correlation_rule_names=correlation_rule_names or None,
+            post_copy_diff=post_copy_diff,
         )
 
     out: dict[str, Any] = {

@@ -32,6 +32,7 @@ const bundleUiState = {
   activeCatalogAsset: localStorage.getItem("cptk_bundles_catalog_asset") || "lists",
   dependencyRows: [],
   catalogTable: null,
+  hideInBasket: false,
   catalogSearch: null,
 };
 
@@ -101,6 +102,19 @@ function isInBasket(asset, rowOrId) {
   return cptkBundleBasket.items.some((item) => keys.has(item.key));
 }
 
+function applyCatalogBasketFilter() {
+  const table = bundleUiState.catalogTable;
+  if (!table) {
+    return;
+  }
+  const asset = bundleUiState.activeCatalogAsset;
+  if (bundleUiState.hideInBasket) {
+    table.setFilter((data) => !isInBasket(asset, data));
+  } else {
+    table.clearFilter(false);
+  }
+}
+
 function refreshCatalogRowStyles() {
   const table = bundleUiState.catalogTable;
   if (!table) return;
@@ -150,6 +164,7 @@ function renderBundleSummary() {
   }
   updateDirtyUi();
   refreshCatalogRowStyles();
+  applyCatalogBasketFilter();
 }
 
 function bundleRowId(asset, row) {
@@ -334,6 +349,7 @@ function initBundlesSection() {
       if (metaEl) metaEl.textContent = metaLine;
       updateCatalogSelectionCount();
       refreshCatalogRowStyles();
+      applyCatalogBasketFilter();
     } catch (err) {
       if (metaEl) metaEl.textContent = `Error: ${err.message}`;
       if (force) throw err;
@@ -737,14 +753,24 @@ function initBundlesSection() {
       "Planning bundle copy…",
     );
     const proceed =
-      typeof confirmOperation === "function"
-        ? await confirmOperation({
+      typeof confirmCopyPlan === "function"
+        ? await confirmCopyPlan({
             title: "Confirm bundle copy",
-            plan,
+            preview: plan,
             proceedLabel: "Copy bundle",
             itemLabel: "asset",
+            operation: "bundles.copy",
+            source_profile: source,
+            target_profile: target,
           })
-        : window.confirm("Copy bundle?");
+        : typeof confirmOperation === "function"
+          ? await confirmOperation({
+              title: "Confirm bundle copy",
+              plan,
+              proceedLabel: "Copy bundle",
+              itemLabel: "asset",
+            })
+          : window.confirm("Copy bundle?");
     if (!proceed) return;
     const copyBtn = document.getElementById("bundles-copy");
     const bundleCopyProgress =
@@ -784,6 +810,10 @@ function initBundlesSection() {
   document.getElementById("bundles-deps-add")?.addEventListener("click", addSelectedDependencies);
   document.getElementById("bundles-refresh-all")?.addEventListener("click", () => void refreshAllCaches());
   document.getElementById("bundles-catalog-add")?.addEventListener("click", addCatalogSelectionToBasket);
+  document.getElementById("bundles-catalog-hide-in-basket")?.addEventListener("change", (event) => {
+    bundleUiState.hideInBasket = Boolean(event.target?.checked);
+    applyCatalogBasketFilter();
+  });
 
   initCatalogGrid();
   if (typeof bindGridSelectionToolbar === "function") {

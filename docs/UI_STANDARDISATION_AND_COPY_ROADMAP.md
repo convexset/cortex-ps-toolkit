@@ -256,22 +256,23 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 
 ### Phase 1 — Unified confirm + result shell (1–2 weeks)
 
-- [ ] Define `operation_plan.py` + JSON schema doc in `docs/api/toolkit/operation-plan.md`.
-- [ ] Migrate **lists**, **scripts**, **playbooks** preview endpoints to emit `plan_version: 1`.
-- [ ] Implement `operation-ui.js`: plan confirm dialog with risks/warnings sections.
-- [ ] Wire lists, scripts, playbooks, deep copy to new confirm + `presentOperationResult` (reuse `copy-result-ui` + `copy-diff-panel-ui`).
-- [ ] Integrations + correlation still on legacy strings but same result shell where possible.
+- [x] Define `operation_plan.py` + JSON schema doc in `docs/api/toolkit/operation-plan.md`.
+- [x] Migrate **lists**, **scripts**, **playbooks** preview endpoints to emit `plan_version: 1`.
+- [x] Implement `operation-ui.js`: plan confirm dialog with risks/warnings sections.
+- [x] Wire lists, scripts, playbooks, shallow copy, deep copy, bundles, integrations, object-setup to `confirmCopyPlan` / `confirmOperation`.
+- [x] Integrations, design-content, and platform-admin previews emit `plan_version: 1` via `wrap_legacy_preview_plan`.
 
-**Exit criteria:** Every bulk copy in List/Script/Playbook Tools uses server plan in confirm; results show summary + expandable issues + diff panel + JSON.
+**Exit criteria:** Every bulk copy in List/Script/Playbook Tools uses server plan in confirm; results show summary + expandable issues + diff panel + JSON. **Mostly met** — delete flows and refactor confirm remain bespoke.
 
 ### Phase 2 — Copy modes: rename / shallow (2–3 weeks)
 
-- [ ] Backend: rename suffix + name check APIs for lists, scripts, playbooks.
-- [ ] Backend: shallow multi-playbook preview + execute (binding table).
-- [ ] Frontend: copy mode selector + suffix + live validation.
-- [ ] Deep copy: rename selected components (analysis panel + plan table).
+- [x] Backend: `copy_mode`, `rename_suffix`, `rename_map` on lists, scripts, playbooks, design, bundle phases.
+- [ ] Backend: dedicated lightweight `name-check` endpoint (today: collision surfaced in copy preview plans).
+- [x] Backend: shallow multi-playbook preview + execute (binding table in bundle + playbook shallow copy).
+- [x] Frontend: copy mode controls + suffix via `appendCopyModeControls` (live name-check API still open).
+- [x] Deep copy: `copy_as_new` upload names in `copy_components` (per-component rename map in analysis UI still open).
 
-**Exit criteria:** Lab tenant demo: shallow 2 PBs with missing sub warning; rename script on conflict without overwrite.
+**Exit criteria:** Lab tenant demo: shallow 2 PBs with missing sub warning; rename script on conflict without overwrite. **Mostly met** in unit tests + lab manual QA item in [`BUNDLES.md`](BUNDLES.md).
 
 ### Phase 3 — Bundles section (2–3 weeks)
 
@@ -282,15 +283,16 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 - [x] Bundle copy result UI (alerts, summary, diff panel, JSON) — [`BUNDLES.md`](BUNDLES.md).
 - [x] WS job `bundles.copy` (HTTP remains default in UI).
 - [x] Wire Bundles copy button to WS progress (like List Tools).
-- [ ] Unified operation-plan confirm for all bundle warnings (binding table UX).
+- [x] Unified operation-plan confirm for bundle warnings (binding table + phase table in confirm dialog).
 
-**Exit criteria:** Save bundle with layouts + 2 playbooks + scripts; copy to second tenant with plan + diff report. **Met** for HTTP path; WS UI adoption open.
+**Exit criteria:** Save bundle with layouts + 2 playbooks + scripts; copy to second tenant with plan + diff report. **Met** (HTTP + WS via `createOperationProgress`).
 
 ### Phase 4 — Polish and procedural hardening (ongoing)
 
-- [ ] Migrate design-content + platform-admin copy previews to operation plan schema.
-- [ ] Post-copy diff on integrations/correlation (optional).
-- [ ] Accessibility pass (dialog focus, `details` keyboard).
+- [x] Migrate design-content + platform-admin copy previews to operation plan schema (`wrap_legacy_preview_plan`).
+- [x] Client `normalizeConfirmPlan` + `confirmCopyPlan` for nested/legacy preview bodies.
+- [x] Post-copy diff on integrations/correlation (optional).
+- [x] Accessibility pass (dialog focus restore on confirm; `details` keyboard still open).
 - [ ] Optional: vend Tabulator/Plotly for offline (`web/static/vendor/`).
 - [ ] E2E integration tests for preview → confirm → result JSON shapes.
 

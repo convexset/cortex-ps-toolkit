@@ -13,6 +13,17 @@ from .metadata import integration_display_name, integration_key, is_copyable_int
 from .search_helpers import fetch_search_bundle, find_configuration
 from .service import refresh_integrations_cache
 from .yaml_export import configuration_to_yaml_text
+from ..content.operation_plan import wrap_legacy_preview_plan
+from ..content.post_copy_diff import (
+    POST_COPY_DIFF_PROBE_ID,
+    apply_post_copy_diffs,
+    aggregate_copy_diff_report,
+    new_copy_run_telemetry,
+    summary_from_copy_diff_report,
+)
+from ..credentials import CredentialProfile
+from .portable_yaml import configuration_to_portable_yaml_document
+from .bundle_helpers import get_configuration_for_bundle
 
 CopyAction = Literal["copy", "update", "skip", "conflict", "blocked"]
 
@@ -101,7 +112,7 @@ def plan_integrations_copy(
     }
     would_abort = stop_on_conflict and bool(conflicts)
 
-    return {
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "overwrite": overwrite,
@@ -111,6 +122,27 @@ def plan_integrations_copy(
         "would_abort": would_abort,
         "conflicts": conflicts,
     }
+    blocked = [item for item in items if item.get("action") == "blocked"]
+    extra_warnings = None
+    if blocked:
+        extra_warnings = [
+            {
+                "code": "INTEGRATION_BLOCKED",
+                "message": f"{len(blocked)} integration(s) cannot be copied (pack/system definitions or missing on source).",
+            },
+        ]
+    return wrap_legacy_preview_plan(
+        legacy,
+        operation="integrations.copy",
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        extra_warnings=extra_warnings,
+    )
+
+
+def _integration_portable_doc(profile: CredentialProfile, integration_id: str) -> dict[str, Any]:
+    configuration = get_configuration_for_bundle(profile, integration_id)
+    return configuration_to_portable_yaml_document(configuration)
 
 
 def copy_integrations_to_tenant(
@@ -120,6 +152,7 @@ def copy_integrations_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    post_copy_diff: bool = False,
 ) -> dict[str, Any]:
     source = get_profile(source_profile)
     target = get_profile(target_profile)
@@ -149,6 +182,7 @@ def copy_integrations_to_tenant(
 
     _source_data, source_lookup, _source_instances = fetch_search_bundle(source)
     results: list[dict[str, Any]] = []
+    diff_pending: list[tuple[int, dict[str, Any], str]] = []
     plan_by_id = {str(item["integration_id"]): item for item in plan["items"]}
 
     for integration_id in integration_ids:
@@ -201,6 +235,7 @@ def copy_integrations_to_tenant(
             })
             continue
 
+        source_portable = configuration_to_portable_yaml_document(configuration)
         yaml_text = configuration_to_yaml_text(configuration)
         filename = f"{key.replace('/', '_')}.yml"
         try:
@@ -217,14 +252,17 @@ def copy_integrations_to_tenant(
                 yaml_text.encode("utf-8"),
                 filename=filename,
             )
-            results.append({
+            result_row = {
                 "integration_id": key,
                 "name": name,
                 "status": "updated" if action == "update" else "copied",
                 "target_id": item.get("target_id") or key,
                 "response": upload_result.data,
                 "status_code": upload_result.status_code,
-            })
+            }
+            results.append(result_row)
+            if post_copy_diff:
+                diff_pending.append((len(results) - 1, source_portable, name))
         except TenantApiError as exc:
             results.append({
                 "integration_id": key,
@@ -237,8 +275,27 @@ def copy_integrations_to_tenant(
 
     op_info("Refreshing integrations cache on %s after integration copy", target.slug)
     refresh_integrations_cache(target)
-    return {
+
+    out: dict[str, Any] = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "results": results,
+        "post_copy_diff": post_copy_diff,
+        "telemetry": new_copy_run_telemetry(
+            operation="integrations.copy",
+            post_copy_diff=post_copy_diff,
+        ),
     }
+    if post_copy_diff and diff_pending:
+        out["post_copy_diff_summary"] = apply_post_copy_diffs(
+            results,
+            target=target,
+            kind="document",
+            fetch=_integration_portable_doc,
+            pending=diff_pending,
+        )
+        out["copy_diff_report"] = aggregate_copy_diff_report(out)
+        if not out.get("post_copy_diff_summary"):
+            out["post_copy_diff_summary"] = summary_from_copy_diff_report(out["copy_diff_report"])
+        out["post_copy_diff_summary"]["probe"] = POST_COPY_DIFF_PROBE_ID
+    return out

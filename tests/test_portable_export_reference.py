@@ -10,7 +10,8 @@ import yaml
 from cortex_ps_toolkit.playbooks.portable_yaml import _strip_portable_metadata
 from cortex_ps_toolkit.scripts.portable_yaml import script_to_portable_yaml_document
 
-SAMPLES = Path("/Users/weichen/Downloads/dev/scratch/xsoar-samples")
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "portable_export"
+SCRATCH_SAMPLES = Path("/Users/weichen/Downloads/dev/scratch/xsoar-samples")
 
 # Keys that must not appear in portable exports (from current_bundle anti-pattern).
 PLAYBOOK_FORBIDDEN_TOP = frozenset({
@@ -45,13 +46,13 @@ SCRIPT_FORBIDDEN_TOP = frozenset({
 
 
 def _load(name: str) -> dict:
-    path = SAMPLES / name
-    if not path.is_file():
-        alt = name.replace("current_bundle_export__", "tenant_export__")
-        path = SAMPLES / alt
-    if not path.is_file():
-        pytest.skip(f"reference sample missing under {SAMPLES}: {name}")
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    alt = name.replace("current_bundle_export__", "tenant_export__")
+    for base in (FIXTURES, SCRATCH_SAMPLES):
+        for candidate in (name, alt):
+            path = base / candidate
+            if path.is_file():
+                return yaml.safe_load(path.read_text(encoding="utf-8"))
+    pytest.skip(f"reference sample missing: {name}")
 
 
 def test_portable_script_document_avoids_api_metadata_keys() -> None:

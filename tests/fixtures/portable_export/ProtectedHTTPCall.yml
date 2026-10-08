@@ -1,0 +1,856 @@
+commonfields:
+  id: ProtectedHTTPCall
+  version: -1
+vcShouldKeepItemLegacyProdMachine: false
+name: ProtectedHTTPCall
+display: Protected HTTP Call
+category: Utilities
+image: data:image/png;base64,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
+description: Generic authenticated HTTP client (system proxy and optional TLS skip).
+  Intermediate tool for calling JSON APIs while deciding if a full integration is
+  needed. Stores header, body, and query secrets with base_url in one encrypted Config
+  blob so credentials are not logged as command arguments and callers cannot retarget
+  the endpoint.
+detaileddescription: |-
+  ## Protected HTTP Call
+
+  Generic authenticated HTTP client for Cortex XSOAR / XSIAM. Use it as an **intermediate integration** while you exercise an API and decide whether a dedicated integration is warranted.
+
+  Supports Cortex **system proxy settings** (`proxy`, default false) and optionally **disabling TLS certificate verification** (`insecure`, default false).
+
+  Authentication secrets may live in **headers**, JSON **body** fields, or **query parameters**. Store them in the encrypted **Config** blob together with `base_url`, so they are not passed as command arguments (those are logged) and so callers cannot retarget the credential by changing only an endpoint (`path` cannot be an absolute URL).
+
+  ### Config (`secret_config`)
+
+  `key=value` segments joined by **Config Delimiter** (default ` ||| `).
+
+  - **Required:** `base_url` — `http`/`https`, no trailing slash (query and `#fragment` allowed)
+  - **Optional (default `{}`):** `base_headers_json`, `base_body_json`, `base_query_params_json`
+
+  Minimal: `base_url=https://api.example.com`
+
+  Header token: `base_headers_json={"Authorization":"Bearer <token>"} ||| base_url=https://api.example.com`
+
+  Query token: `base_query_params_json={"api_key":"<token>"} ||| base_url=https://api.example.com`
+
+  Body token: `base_body_json={"token":"<token>"} ||| base_url=https://api.example.com`
+
+  Test validates Config only (no HTTP request). For the agent/script contract, run:
+
+  ```text
+  !protected-http-call-help
+  ```
+
+
+  ---
+  [View Integration Documentation](https://xsoar.pan.dev/docs/reference/integrations/protected-http-call)
+configuration:
+- section: Connect
+  display: Config
+  name: secret_config
+  defaultvalue: base_url=https://example.com
+  type: 14
+  required: true
+  additionalinfo: 'Encrypted key=value blob joined by Config Delimiter. Required key
+    is base_url. Optional keys (default {}): base_headers_json, base_body_json, base_query_params_json.
+    Named secret_config so debug-mode redacts the value.'
+- section: Connect
+  display: Config Delimiter
+  name: config_delimiter
+  defaultvalue: ' ||| '
+  type: 0
+  required: true
+  additionalinfo: String used to split Config into key=value segments. Must not appear
+    inside the JSON values.
+- section: Connect
+  advanced: true
+  display: Trust any certificate (not secure)
+  name: insecure
+  defaultvalue: "false"
+  type: 8
+  required: false
+  additionalinfo: Skip TLS certificate verification for HTTP calls. Default is false.
+- section: Connect
+  advanced: true
+  display: Use system proxy settings
+  name: proxy
+  defaultvalue: "false"
+  type: 8
+  required: false
+  additionalinfo: Use the HTTP proxy configured in Cortex system settings. Default
+    is false.
+script:
+  commands:
+  - name: protected-http-call-help
+    arguments: []
+    description: Display agent-readable documentation for ProtectedHTTPCall (Config
+      schema, command contract, executeCommand recipe).
+  - name: protected-http-call
+    arguments:
+    - name: path
+      description: 'URL path appended to base_url path (not RFC urljoin). Should start
+        with / (for example /v1/resource). May include ?query and #fragment. Absolute
+        URLs are rejected.'
+    - name: method
+      auto: PREDEFINED
+      predefined:
+      - GET
+      - POST
+      - HEAD
+      - PUT
+      - DELETE
+      description: HTTP method.
+    - name: headers_json
+      description: JSON object of headers merged onto base_headers_json for this call.
+        Do not put secrets here.
+    - name: body_json
+      description: JSON object of body fields merged onto base_body_json for this
+        call. Do not put secrets here.
+    - name: query_params_json
+      description: JSON object of query parameters merged onto base_query_params_json
+        and any query already on the URL. Do not put secrets here. Empty object means
+        no extra query string (no trailing ?).
+    - name: call-id
+      description: Optional identifier stored as the result id in context. When empty,
+        id is set to the timezone-aware ISO timestamp of the request start.
+    outputs:
+    - contextPath: ProtectedHTTPCall.id
+      description: Result identifier (call-id, or the request start timestamp when
+        call-id is empty).
+      type: String
+    - contextPath: ProtectedHTTPCall.status_code
+      description: HTTP status code.
+      type: Number
+    - contextPath: ProtectedHTTPCall.headers
+      description: Response headers.
+      type: Unknown
+    - contextPath: ProtectedHTTPCall.body_text
+      description: Raw response body.
+      type: String
+    - contextPath: ProtectedHTTPCall.body_json
+      description: Response body parsed as JSON, when the body is valid JSON.
+      type: Unknown
+    - contextPath: ProtectedHTTPCall.metadata.ts
+      description: Timezone-aware request start time (ISO 8601).
+      type: Date
+    - contextPath: ProtectedHTTPCall.metadata.duration_in_ms
+      description: Request duration in milliseconds.
+      type: Number
+    description: Make an HTTP call using instance Config (base URL, headers, body,
+      query params). Per-call JSON arguments are merged onto the base objects. Results
+      are written to context key ProtectedHTTPCall, identified by id.
+  nativeimage:
+  - "8.8"
+  - "8.6"
+  script: |
+    register_module_line('ProtectedHTTPCall', 'start', __line__())
+    CONSTANT_PACK_VERSION = '1.0.0'
+    demisto.debug('pack id = GIC_Custom, pack version = 1.0.0')
+    import json
+    from datetime import datetime, timezone
+    from typing import Any, Dict, List, Optional, Tuple
+    from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+
+    import urllib3
+
+
+
+    urllib3.disable_warnings()
+
+    OUTPUTS_PREFIX = "ProtectedHTTPCall"
+    ALLOWED_METHODS = ("GET", "POST", "HEAD", "PUT", "DELETE")
+    REQUIRED_CONFIG_KEYS = ("base_url",)
+    OPTIONAL_JSON_CONFIG_KEYS = (
+        "base_headers_json",
+        "base_body_json",
+        "base_query_params_json",
+    )
+    ALLOWED_CONFIG_KEYS = frozenset(REQUIRED_CONFIG_KEYS + OPTIONAL_JSON_CONFIG_KEYS)
+    DEFAULT_CONFIG_DELIMITER = " ||| "
+    EMPTY_JSON_OBJECT = "{}"
+
+    HELP_MARKDOWN = r'''# ProtectedHTTPCall — agent / script contract
+
+    Generic authenticated HTTP client for Cortex XSOAR / XSIAM. It honors Cortex **system proxy settings** (`proxy`) and can **disable TLS certificate verification** (`insecure`; default false — use only when the target's PKI is broken).
+
+    Use this as an **intermediate integration** while you exercise an API and decide whether a dedicated content pack is warranted. Credentials are often not a single "API key" field: they may live in request **headers**, JSON **body** fields, or **query parameters**. Store those values in the instance **Config** blob together with `base_url`. That layout is designed so secrets do not appear in command arguments, playbooks, or War Room history (those surfaces are logged); so debug-mode redacts the blob (`secret_config`); and so a caller or another administrator cannot retarget a stored credential by changing only an endpoint — `base_url` is not a command argument, and `path` cannot be an absolute URL.
+
+    ## When this is enough
+
+    Use ProtectedHTTPCall from a script or playbook to call a JSON HTTP API without writing a vendor integration first. One instance per target API (or credential set); select it with `"using"`.
+
+    Write a dedicated integration when you need fetch-incidents, mirroring, indicator modeling, OAuth, pagination helpers, non-JSON bodies (form/multipart/raw), or a stable multi-command surface.
+
+    ## Security model
+
+    - Secrets belong in `base_headers_json`, `base_body_json`, and/or `base_query_params_json`, always paired with `base_url` in the same encrypted blob.
+    - Command arguments are logged. Never put credentials in `path`, `headers_json`, `body_json`, `query_params_json`, or `call-id`.
+    - Callers cannot change the host. War Room readable output hides the request URL (it may contain query secrets) and reports only the **count** of fields in each of the three base JSON objects, not their values.
+    - Response `body_text` / `body_json` are returned as-is and may contain API-side secrets; do not dump them to the War Room unless necessary.
+
+    ## Do / do not
+
+    - **Do** store secrets only in the instance **Config** blob (`secret_config`).
+    - **Do** pass `"using": "<integration instance name>"` on every `executeCommand`.
+    - **Do** send `headers_json`, `body_json`, and `query_params_json` as JSON **strings** (`json.dumps`).
+    - **Do not** put API keys, tokens, or passwords in command arguments (`path`, `headers_json`, `body_json`, `query_params_json`, `call-id`). Those are logged.
+    - **Do not** log or return parsed Config values.
+
+    ## Instance Config (`secret_config`)
+
+    One encrypted string of `key=value` segments joined by **Config Delimiter** (default ` ||| `). The delimiter must not appear inside JSON values.
+
+    | Key | Required | Default | Meaning |
+    | --- | --- | --- | --- |
+    | `base_url` | yes | — | `http` or `https` URL, **no trailing slash** (query string and `#fragment` are allowed) |
+    | `base_headers_json` | no | `{}` | JSON object of default request headers |
+    | `base_body_json` | no | `{}` | JSON object of default JSON body fields |
+    | `base_query_params_json` | no | `{}` | JSON object of default URL query parameters |
+
+    Minimal valid Config:
+
+    ```text
+    base_url=https://api.example.com
+    ```
+
+    Typical Config with a bearer token:
+
+    ```text
+    base_headers_json={"Authorization":"Bearer <token>","Accept":"application/json"} ||| base_url=https://api.example.com
+    ```
+
+    Query-string API key (still secret; stays in Config):
+
+    ```text
+    base_query_params_json={"api_key":"<token>"} ||| base_url=https://api.example.com
+    ```
+
+    JSON body token (still secret; stays in Config):
+
+    ```text
+    base_body_json={"token":"<token>"} ||| base_url=https://api.example.com
+    ```
+
+    Omitted keys default to `{}`. Unknown keys are rejected. The parameter is named `secret_config` so debug-mode redacts it. Display name in the UI is **Config**.
+
+    Other instance options: **Trust any certificate** (`insecure`, default false), **Use system proxy settings** (`proxy`, default false).
+
+    ## Commands
+
+    | Command | Purpose |
+    | --- | --- |
+    | `protected-http-call-help` | This document (War Room markdown) |
+    | `protected-http-call` | Perform the HTTP call |
+
+    ### `protected-http-call` arguments
+
+    | Argument | Type | Default | Notes |
+    | --- | --- | --- | --- |
+    | `path` | string | `""` | Appended to `base_url`. Should start with `/`. Must not be an absolute `http://` / `https://` URL. May include `?query` and `#fragment`. |
+    | `method` | enum | `GET` | `GET`, `POST`, `HEAD`, `PUT`, `DELETE` |
+    | `headers_json` | JSON object string | `{}` | Shallow-merged onto `base_headers_json`. See **Merge rules**. |
+    | `body_json` | JSON object string | `{}` | Shallow-merged onto `base_body_json`. Sent as JSON when the merged body is non-empty. See **Merge rules**. |
+    | `query_params_json` | JSON object string | `{}` | Shallow-merged onto URL query and `base_query_params_json`. See **Merge rules**. |
+    | `call-id` | string | `""` | Stored as result `id`. If empty, `id` = request-start timestamp (timezone-aware ISO 8601). |
+    | `using` | string | — | Integration **instance** name. Required when more than one instance exists. |
+
+    Playground:
+
+    ```text
+    !protected-http-call using="ProtectedHTTPCall_example" path=`/v1/health`
+    !protected-http-call using="ProtectedHTTPCall_example" method=GET path=`/v1/search` query_params_json=`{"q":"example"}`
+    ```
+
+    ## URL construction
+
+    Do **not** use RFC `urljoin` (it would drop the last `base_url` path segment when `path` starts with `/`). Parse `base_url` and `path` with `urllib.parse.urlparse` so `?query` and `#fragment` are never concatenated as text.
+
+    - Path = `{base_url.path}{path.path}` (string concatenation of the path parts only).
+    - Fragment = `path` fragment if present, else `base_url` fragment. Always last: `scheme://host/path?query#fragment`.
+    - If the merged query is empty, the URL has **no** trailing `?`.
+
+    Query-string keys are merged as in **Merge rules** below (not by string-appending `?…`).
+
+    ## Merge rules
+
+    All three merges are **shallow**: later sources overwrite the same **top-level** key; nested objects are replaced, not deep-merged. Omitted JSON objects default to `{}`.
+
+    ### Headers
+
+    Applied, in order (later overwrites the same header name):
+
+    1. `base_headers_json` (Config)
+    2. `headers_json` (this call)
+
+    Example:
+
+    - Config `base_headers_json`: `{"Authorization":"Bearer <token>","Accept":"application/json","X-Env":"prod"}`
+    - Call `headers_json`: `{"Accept":"application/vnd.api+json","X-Trace":"abc"}`
+
+    Sent headers:
+
+    ```json
+    {
+        "Authorization": "Bearer <token>",
+        "Accept": "application/vnd.api+json",
+        "X-Env": "prod",
+        "X-Trace": "abc"
+    }
+    ```
+
+    `Accept` is overwritten. `Authorization` stays in Config (do not put it on the call).
+
+    ### Body
+
+    Applied, in order (later overwrites the same top-level field):
+
+    1. `base_body_json` (Config)
+    2. `body_json` (this call)
+
+    If the merged object is empty, no JSON body is sent.
+
+    Example:
+
+    - Config `base_body_json`: `{"token":"<token>","page":1,"filter":{"status":"open"}}`
+    - Call `body_json`: `{"page":2,"filter":{"owner":"me"}}`
+
+    Sent JSON body:
+
+    ```json
+    {
+        "token": "<token>",
+        "page": 2,
+        "filter": {"owner": "me"}
+    }
+    ```
+
+    `page` is overwritten. `filter` is **replaced** (not deep-merged), so `status` is gone. `token` stays in Config.
+
+    ### Query parameters
+
+    Applied, in order (later overwrites the same query key):
+
+    1. Query string already on `base_url`
+    2. Query string already on `path`
+    3. `base_query_params_json` (Config)
+    4. `query_params_json` (this call)
+
+    Existing keys keep their position; new keys are appended. Values are then `urlencode`d. Empty merge → no `?`.
+
+    Example:
+
+    - Config `base_url`: `https://api.example.com/v1?source=config&q=from-base-url`
+    - Config `base_query_params_json`: `{"api_key":"tok_abc","q":"from-base-query"}`
+    - Call `path`: `/search?q=from-path&limit=10#results`
+    - Call `query_params_json`: `{"q":"from-call","page":2}`
+
+    Step by step:
+
+    | After | `q` | Other keys |
+    | --- | --- | --- |
+    | `base_url` query | `from-base-url` | `source=config` |
+    | `path` query | `from-path` | `source`, `limit=10` |
+    | `base_query_params_json` | `from-base-query` | `source`, `limit`, `api_key=tok_abc` |
+    | `query_params_json` | `from-call` | `source`, `limit`, `api_key`, `page=2` |
+
+    Resulting URL:
+
+    ```text
+    https://api.example.com/v1/search?source=config&q=from-call&limit=10&api_key=tok_abc&page=2#results
+    ```
+
+    Path is `/v1` + `/search`. Fragment `#results` comes from `path` (it wins over any fragment on `base_url`). `api_key` stays in Config (do not put it on the call).
+
+    ## Output
+
+    Context prefix: `ProtectedHTTPCall`. Key field: `id`.
+
+    From `demisto.executeCommand`, read:
+
+    `results[0]["EntryContext"]["ProtectedHTTPCall(val.id && val.id == obj.id)"]`
+
+    | Field | Type | Description |
+    | --- | --- | --- |
+    | `id` | string | `call-id`, or `metadata.ts` when `call-id` is empty |
+    | `status_code` | number | HTTP status code (non-2xx is still returned, not raised — check this field) |
+    | `headers` | object | Response headers |
+    | `body_text` | string | Raw response body |
+    | `body_json` | object/array/null | `json.loads(body_text)` when valid JSON, else `null` |
+    | `metadata.ts` | string | Timezone-aware request start (ISO 8601) |
+    | `metadata.duration_in_ms` | number | Duration in milliseconds |
+
+    ## Call from an XSOAR script (copy/paste)
+
+    ````python
+    results = demisto.executeCommand("protected-http-call", {
+        "using": "ProtectedHTTPCall_instance_XSIAM",
+        "method": "POST",
+        "path": "/public_api/v1/case/search",
+        "query_params_json": json.dumps({}),
+        "body_json": json.dumps({
+            "request_data": {
+                "filters": [
+                    {
+                        "field": "case_id",
+                        "operator": "in",
+                        "value": [case_id],
+                    }
+                ]
+            }
+        }),
+    })
+
+    if is_error(results):
+        return_error(get_error(results))
+
+    integration_output = results[0].get("EntryContext", {}).get(
+        "ProtectedHTTPCall(val.id && val.id == obj.id)"
+    )
+    payload = (integration_output or {}).get("body_json")
+    markdown_text = "\n".join([
+        f"# Output (`case_id = {case_id}`)",
+        "```json",
+        json.dumps(integration_output, indent=4),
+        "```",
+    ])
+    return_results(CommandResults(readable_output=markdown_text))
+    ````
+
+    ## Optional helper
+
+    ```python
+    import json
+    from typing import Any, Dict, Optional
+
+
+
+
+
+    def protected_http_call(
+        instance_name: str,
+        path: str = "",
+        method: str = "GET",
+        headers: Optional[Dict[str, Any]] = None,
+        body: Optional[Dict[str, Any]] = None,
+        query_params: Optional[Dict[str, Any]] = None,
+        call_id: str = "",
+    ) -> Dict[str, Any]:
+        response = demisto.executeCommand(
+            "protected-http-call",
+            {
+                "path": path,
+                "method": method,
+                "headers_json": json.dumps(headers or {}),
+                "body_json": json.dumps(body or {}),
+                "query_params_json": json.dumps(query_params or {}),
+                "call-id": call_id,
+                "using": instance_name,
+            },
+        )
+        if is_error(response):
+            return_error(get_error(response))
+        entry = response[0] if isinstance(response, list) else response
+        context = (entry or {}).get("EntryContext") or {}
+        data = context.get("ProtectedHTTPCall(val.id && val.id == obj.id)")
+        if not isinstance(data, dict):
+            data = context.get("ProtectedHTTPCall")
+        if not isinstance(data, dict):
+            for key, value in context.items():
+                if "ProtectedHTTPCall" in str(key) and isinstance(value, dict):
+                    data = value
+                    break
+                if "ProtectedHTTPCall" in str(key) and isinstance(value, list) and value:
+                    data = value[-1]
+                    break
+        if not isinstance(data, dict):
+            return_error("ProtectedHTTPCall did not return the expected data dictionary")
+        return data
+    ```
+    '''
+
+
+    class ProtectedHTTPCallError(DemistoException):
+        pass
+
+
+    class Client(BaseClient):
+        """HTTP client that applies instance-level base headers, body, and query params."""
+
+        def __init__(
+            self,
+            base_url: str,
+            base_headers: Dict[str, Any],
+            base_body: Dict[str, Any],
+            base_query_params: Optional[Dict[str, Any]] = None,
+            verify: bool = True,
+            proxy: bool = False,
+        ):
+            super().__init__(base_url=base_url, verify=verify, proxy=proxy)
+            self.configured_base_url = base_url
+            self.base_headers = base_headers
+            self.base_body = base_body
+            self.base_query_params = base_query_params or {}
+
+        def http_call(
+            self,
+            method: str,
+            url: str,
+            headers: Dict[str, Any],
+            body: Dict[str, Any],
+        ) -> Dict[str, Any]:
+            request_headers = dict(self.base_headers)
+            request_headers.update(headers)
+            request_body = dict(self.base_body)
+            request_body.update(body)
+
+            request_kwargs: Dict[str, Any] = {
+                "method": method,
+                "url": url,
+                "headers": request_headers,
+                "verify": self._verify,
+                "timeout": self.timeout,
+            }
+            if request_body:
+                request_kwargs["json"] = request_body
+
+            started = datetime.now(timezone.utc)
+            response = self._session.request(**request_kwargs)
+            ended = datetime.now(timezone.utc)
+
+            body_text = response.text
+            body_json: Any = None
+            if body_text:
+                try:
+                    body_json = json.loads(body_text)
+                except json.JSONDecodeError:
+                    body_json = None
+
+            return {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "body_text": body_text,
+                "body_json": body_json,
+                "metadata": {
+                    "ts": started.isoformat(),
+                    "duration_in_ms": int(round((ended - started).total_seconds() * 1000)),
+                },
+            }
+
+
+    def unwrap_quotes(value: str) -> str:
+        """Strip wrapping/stray quotes introduced by YAML or the instance UI."""
+        text = (value or "").strip()
+        while len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
+            text = text[1:-1].strip()
+        if text[:1] in "{[":
+            return text
+        return text.strip("'\"")
+
+
+    def parse_config(config: str, delimiter: str) -> Dict[str, str]:
+        """Split the secret config blob into key=value fields; default omitted JSON keys to {}."""
+        delimiter = unwrap_quotes(delimiter)
+        config = unwrap_quotes(config)
+        if not delimiter:
+            raise ProtectedHTTPCallError("config_delimiter must not be empty")
+        if not config:
+            raise ProtectedHTTPCallError("config must not be empty")
+
+        parsed: Dict[str, str] = {}
+        for segment in config.split(delimiter):
+            part = segment.strip()
+            if not part:
+                continue
+            if "=" not in part:
+                raise ProtectedHTTPCallError(
+                    f"Invalid config segment (expected key=value): {part}"
+                )
+            key, value = part.split("=", 1)
+            key = unwrap_quotes(key.strip())
+            if not key:
+                raise ProtectedHTTPCallError("Invalid config segment: empty key")
+            parsed[key] = unwrap_quotes(value)
+
+        extra = [key for key in parsed if key not in ALLOWED_CONFIG_KEYS]
+        if extra:
+            raise ProtectedHTTPCallError(
+                f"config contains unknown keys: {', '.join(extra)}"
+            )
+        if "base_url" not in parsed or not parsed["base_url"]:
+            raise ProtectedHTTPCallError("config is missing required key: base_url")
+        for key in OPTIONAL_JSON_CONFIG_KEYS:
+            if not parsed.get(key):
+                parsed[key] = EMPTY_JSON_OBJECT
+        return parsed
+
+
+    def parse_json_object(raw: str, field_name: str) -> Dict[str, Any]:
+        """Parse a JSON object from a string."""
+        try:
+            value = json.loads(raw if raw is not None else "")
+        except json.JSONDecodeError as exc:
+            raise ProtectedHTTPCallError(f"{field_name} is not valid JSON: {exc}") from exc
+        if not isinstance(value, dict):
+            raise ProtectedHTTPCallError(f"{field_name} must be a JSON object")
+        return value
+
+
+    def validate_base_url(base_url: str) -> None:
+        """Require an http(s) URL whose path has no trailing slash."""
+        if not base_url:
+            raise ProtectedHTTPCallError("base_url must not be empty")
+        parsed = urlparse(base_url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ProtectedHTTPCallError(
+                "base_url must be a valid http or https URL (for example https://api.example.com)"
+            )
+        origin_and_path = urlunparse(
+            (parsed.scheme, parsed.netloc, parsed.path, parsed.params, "", "")
+        )
+        if origin_and_path.endswith("/"):
+            raise ProtectedHTTPCallError("base_url must not have a trailing slash")
+
+
+    def normalize_query_params(query_params: Dict[str, Any]) -> List[Tuple[str, str]]:
+        """Flatten a JSON object into URL-encoded (key, value) pairs."""
+        pairs: List[Tuple[str, str]] = []
+        for key, value in query_params.items():
+            if value is None:
+                continue
+            if isinstance(value, bool):
+                pairs.append((str(key), "true" if value else "false"))
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if item is None:
+                        continue
+                    if isinstance(item, bool):
+                        pairs.append((str(key), "true" if item else "false"))
+                    else:
+                        pairs.append((str(key), str(item)))
+            else:
+                pairs.append((str(key), str(value)))
+        return pairs
+
+
+    def apply_query_params(url: str, query_params: Dict[str, Any]) -> str:
+        """Merge query params into url. Fragment stays after query. No trailing ? if empty."""
+        parsed = urlparse(url)
+        merged: Dict[str, Any] = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        merged.update(query_params)
+        pairs = normalize_query_params(merged)
+        query = urlencode(pairs) if pairs else ""
+        return urlunparse(
+            (parsed.scheme, parsed.netloc, parsed.path, parsed.params, query, parsed.fragment)
+        )
+
+
+    def join_base_url_and_path(base_url: str, path: str) -> str:
+        """Join base_url and path without treating #fragment or ?query as path text."""
+        base = urlparse(base_url)
+        extra = urlparse(path)
+        if extra.scheme or extra.netloc:
+            raise ProtectedHTTPCallError(
+                "path must be a URL path (for example /v1/resource), not an absolute URL"
+            )
+        merged_query = dict(parse_qsl(base.query, keep_blank_values=True))
+        merged_query.update(dict(parse_qsl(extra.query, keep_blank_values=True)))
+        query = urlencode(normalize_query_params(merged_query)) if merged_query else ""
+        fragment = extra.fragment if extra.fragment else base.fragment
+        return urlunparse(
+            (
+                base.scheme,
+                base.netloc,
+                f"{base.path}{extra.path}",
+                extra.params or base.params,
+                query,
+                fragment,
+            )
+        )
+
+
+    def load_instance_config(
+        params: Dict[str, Any],
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], str]:
+        """Extract and validate base headers, body, query params, and URL from instance params."""
+        # Name must contain "secret" so CommonServerPython debug-mode redacts the value.
+        # Fall back to legacy "config" for instances created before the rename.
+        config = str(params.get("secret_config") or params.get("config") or "")
+        delimiter = str(params.get("config_delimiter") or DEFAULT_CONFIG_DELIMITER)
+        parsed = parse_config(config, delimiter)
+        base_headers = parse_json_object(parsed["base_headers_json"], "base_headers_json")
+        base_body = parse_json_object(parsed["base_body_json"], "base_body_json")
+        base_query_params = parse_json_object(
+            parsed["base_query_params_json"], "base_query_params_json"
+        )
+        base_url = parsed["base_url"]
+        validate_base_url(base_url)
+        _register_secret_log_strings(config, base_headers, base_body, base_query_params)
+        return base_headers, base_body, base_query_params, base_url
+
+
+    def _register_secret_log_strings(
+        config: str,
+        base_headers: Dict[str, Any],
+        base_body: Dict[str, Any],
+        base_query_params: Dict[str, Any],
+    ) -> None:
+        """Mask the config blob and string secret values in later debug HTTP logs."""
+        register = globals().get("add_sensitive_log_strs")
+        if not callable(register):
+            return
+        if config:
+            register(config)
+        for value in (
+            list(base_headers.values())
+            + list(base_body.values())
+            + list(base_query_params.values())
+        ):
+            if isinstance(value, str) and value:
+                register(value)
+
+
+    def build_request_url(
+        base_url: str,
+        path: str,
+        query_params: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Return the absolute request URL: joined base_url + path, with merged query params."""
+        if path.lower().startswith(("http://", "https://")):
+            raise ProtectedHTTPCallError(
+                "path must be a URL path (for example /v1/resource), not an absolute URL"
+            )
+        return apply_query_params(join_base_url_and_path(base_url, path), query_params or {})
+
+
+    def normalize_method(method: str) -> str:
+        normalized = (method or "GET").strip().upper()
+        if normalized not in ALLOWED_METHODS:
+            raise ProtectedHTTPCallError(
+                f"method must be one of: {', '.join(ALLOWED_METHODS)}"
+            )
+        return normalized
+
+
+    def resolve_result_id(call_id: str, timestamp_iso: str) -> str:
+        """Use call-id when set; otherwise the request timestamp ISO string."""
+        stripped = (call_id or "").strip()
+        return stripped if stripped else timestamp_iso
+
+
+    def test_module(params: Dict[str, Any]) -> str:
+        """Validate Config JSON and base_url. Does not send an HTTP request."""
+        load_instance_config(params)
+        return "ok"
+
+
+    def help_command() -> CommandResults:
+        return CommandResults(
+            readable_output=HELP_MARKDOWN,
+            ignore_auto_extract=True,
+        )
+
+
+    def protected_http_call_command(client: Client, args: Dict[str, Any]) -> CommandResults:
+        path = str(args.get("path") or "")
+        method = normalize_method(str(args.get("method") or "GET"))
+        headers = parse_json_object(str(args.get("headers_json") or "{}"), "headers_json")
+        body = parse_json_object(str(args.get("body_json") or "{}"), "body_json")
+        query_params = dict(client.base_query_params)
+        query_params.update(
+            parse_json_object(str(args.get("query_params_json") or "{}"), "query_params_json")
+        )
+        request_url = build_request_url(client.configured_base_url, path, query_params)
+        data = client.http_call(method=method, url=request_url, headers=headers, body=body)
+        result_id = resolve_result_id(str(args.get("call-id") or ""), data["metadata"]["ts"])
+        data = {"id": result_id, **data}
+
+        readable = tableToMarkdown(
+            "Protected HTTP Call",
+            {
+                "ID": data["id"],
+                # URL Omitted for security reasons
+                "URL": "(hidden for security reasons)",
+                # "URL": request_url,
+                "Method": method,
+                "Status": data["status_code"],
+                "Started": data["metadata"]["ts"],
+                "Duration (ms)": data["metadata"]["duration_in_ms"],
+                "# Base headers fields": len(client.base_headers),
+                "# Base body fields": len(client.base_body),
+                "# Base query params fields": len(client.base_query_params),
+            },
+            headers=[
+                "ID",
+                "URL",
+                "Method",
+                "Status",
+                "Started",
+                "Duration (ms)",
+                "# Base headers fields",
+                "# Base body fields",
+                "# Base query params fields",
+            ],
+        ) + "\n".join(
+            [
+                "",
+                "",
+                "### JSON Output:",
+                "```json",
+                json.dumps(data, indent=4),
+                "```",
+            ]
+        )
+        return CommandResults(
+            outputs_prefix=OUTPUTS_PREFIX,
+            outputs_key_field="id",
+            outputs=data,
+            readable_output=readable,
+            raw_response=data,
+        )
+
+
+    def main():
+        params = demisto.params()
+        args = demisto.args()
+        command = demisto.command()
+        demisto.debug(f"Command being called is {command}")
+
+        try:
+            if command == "test-module":
+                return_results(test_module(params))
+                return
+            if command == "protected-http-call-help":
+                return_results(help_command())
+                return
+            if command == "protected-http-call":
+                base_headers, base_body, base_query_params, base_url = load_instance_config(
+                    params
+                )
+                verify_certificate = not argToBoolean(params.get("insecure", False))
+                proxy = argToBoolean(params.get("proxy", False))
+                client = Client(
+                    base_url=base_url,
+                    base_headers=base_headers,
+                    base_body=base_body,
+                    base_query_params=base_query_params,
+                    verify=verify_certificate,
+                    proxy=proxy,
+                )
+                return_results(protected_http_call_command(client, args))
+                return
+            raise NotImplementedError(f"Command {command} is not implemented")
+        except Exception as exc:
+            return_error(f"Failed to execute {command} command.\nError:\n{str(exc)}")
+
+
+    if __name__ in ("__main__", "__builtin__", "builtins"):  # pragma: no cover
+        main()
+
+    register_module_line('ProtectedHTTPCall', 'end', __line__())
+  type: python
+  dockerimage: demisto/python3:3.12.12.7090913
+  subtype: python3
+  runonce: false
+signature: ""
+restrictioncenter: {}

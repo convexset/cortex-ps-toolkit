@@ -1,0 +1,165 @@
+commonfields:
+  id: 319b89a2-601c-405b-8d30-7ee95d9f71a7
+  version: 2
+vcShouldKeepItemLegacyProdMachine: false
+name: TEST_Show_Env
+script: |-
+  import os
+  import shutil
+  import importlib.metadata
+
+
+  def get_environment_data():
+      """Gathers OS environment variables."""
+      return dict(os.environ)
+
+
+  def get_python_packages():
+      """Gathers installed Python packages and their versions."""
+      try:
+          packages = {
+              dist.metadata['Name']: dist.version
+              for dist in importlib.metadata.distributions()
+              if dist.metadata['Name']
+          }
+          return dict(sorted(packages.items(), key=lambda x: x[0].lower()))
+      except Exception as e:
+          return {"error": f"Failed to gather installed packages: {str(e)}"}
+
+
+  def get_disk_and_memory_metrics():
+      """Gathers disk usage and system memory metrics."""
+      metrics = {}
+
+      # Disk Metrics
+      try:
+          total, used, free = shutil.disk_usage("/")
+          metrics["disk_usage"] = {
+              "Total (GB)": round(total / (1024 ** 3), 2),
+              "Used (GB)": round(used / (1024 ** 3), 2),
+              "Free (GB)": round(free / (1024 ** 3), 2),
+              "Percent Used": f"{round((used / total) * 100, 2)}%"
+          }
+      except Exception as e:
+          metrics["disk_usage"] = {"error": str(e)}
+
+      # Memory Metrics (Reads Linux container meminfo)
+      try:
+          if os.path.exists("/proc/meminfo"):
+              mem_data = {}
+              with open("/proc/meminfo", "r") as f:
+                  for line in f:
+                      parts = line.split(":")
+                      if len(parts) == 2:
+                          mem_data[parts[0].strip()] = parts[1].strip()
+
+              metrics["memory_metrics"] = {
+                  "MemTotal": mem_data.get("MemTotal"),
+                  "MemFree": mem_data.get("MemFree"),
+                  "MemAvailable": mem_data.get("MemAvailable"),
+                  "Buffers": mem_data.get("Buffers"),
+                  "Cached": mem_data.get("Cached"),
+                  "SwapTotal": mem_data.get("SwapTotal"),
+                  "SwapFree": mem_data.get("SwapFree")
+              }
+          else:
+              metrics["memory_metrics"] = {"info": "/proc/meminfo unavailable on this OS"}
+      except Exception as e:
+          metrics["memory_metrics"] = {"error": str(e)}
+
+      return metrics
+
+
+  def sanitize(value):
+      """Sanitizes text strings to avoid breaking Markdown table formatting."""
+      return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+  def format_dict_to_markdown_table(title, data, col1="Key", col2="Value"):
+      """Formats a single key-value dictionary into a Markdown table block."""
+      md = f"### {title}\n"
+      if not isinstance(data, dict) or not data:
+          return md + "*No data available.*\n"
+
+      md += f"| {col1} | {col2} |\n"
+      md += "| :--- | :--- |\n"
+      for k, v in data.items():
+          md += f"| {sanitize(k)} | {sanitize(v)} |\n"
+
+      return md
+
+
+  def format_metrics_to_markdown_table(metrics_data):
+      """Formats disk and memory metrics dictionaries into Markdown tables."""
+      args = demisto.args()
+      show_disk_usage = argToBoolean(args.get('show_disk_usage', True))
+      show_mem_usage = argToBoolean(args.get('show_disk_usage', True))
+
+      md = "### Disk and Memory Metrics\n\n" if show_disk_usage or show_mem_usage else ""
+
+      # Format Disk Metrics Table
+      if show_disk_usage:
+          md += "**Disk Usage**\n"
+          disk_data = metrics_data.get("disk_usage", {})
+          if "error" in disk_data:
+              md += f"Error reading disk metrics: {disk_data['error']}\n\n"
+          else:
+              md += "| Metric | Value |\n| :--- | :--- |\n"
+              for metric, val in disk_data.items():
+                  md += f"| {sanitize(metric)} | {sanitize(val)} |\n"
+              md += "\n"
+
+      # Format Memory Metrics Table
+      if show_mem_usage:
+          md += "**Memory Metrics**\n"
+          mem_data = metrics_data.get("memory_metrics", {})
+          if "error" in mem_data or "info" in mem_data:
+              md += f"{mem_data.get('error') or mem_data.get('info')}\n\n"
+          else:
+              md += "| Metric | Value |\n| :--- | :--- |\n"
+              for metric, val in mem_data.items():
+                  if val is not None:
+                      md += f"| {sanitize(metric)} | {sanitize(val)} |\n"
+              md += "\n"
+
+      return md
+
+
+  def main():
+      try:
+          # 1. Gather all system datasets
+          env_data = get_environment_data()
+          pkg_data = get_python_packages()
+          metrics_data = get_disk_and_memory_metrics()
+
+          # 2. Convert datasets into Markdown tables
+          md_items = [
+              format_dict_to_markdown_table("Environment Variables", env_data, col1="Variable", col2="Value"),
+              format_dict_to_markdown_table("Python Packages Available", pkg_data, col1="Package", col2="Version"),
+              format_metrics_to_markdown_table(metrics_data)
+          ]
+
+          # 3. Output results to the War Room as separate Markdown entries
+          for md in md_items:
+              demisto.results({
+                  "Type": entryTypes["note"],
+                  "Contents": md,
+                  "ContentsFormat": formats["markdown"]
+              })
+
+      except Exception as ex:
+          return_error(f"Failed to execute SystemDebugDump script. Error: {str(ex)}")
+
+
+  if __name__ in ('__main__', '__builtin__', 'builtins'):
+      main()
+type: python
+tags: []
+enabled: true
+scripttarget: 0
+subtype: python3
+pswd: ""
+runonce: false
+runas: DBotWeakRole
+engineinfo: {}
+mainengineinfo: {}

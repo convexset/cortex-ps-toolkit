@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC = REPO_ROOT / "web" / "static"
-BUILD_ID = "20261008g"
+BUILD_ID = "20261009e"
 
 
 def _read_static(name: str) -> str:
@@ -92,6 +92,28 @@ def test_grid_search_supports_all_column_filtering() -> None:
     source = _read_static("grid-search.js")
     assert "function rowMatchesSearchFields" in source
     assert 'searchFields = "all"' in source
+
+
+def test_copy_mode_controls_include_help_icons() -> None:
+    source = _read_static("operation-ui.js")
+    assert "function fieldHelpIcon" in source
+    assert 'value="copy_as_new"' in source
+    assert "Alternative to skip or overwrite when names collide" in source
+    assert "field-help-icon" in source
+    css = _read_static("styles.css")
+    assert ".field-help-icon" in css
+
+
+def test_operation_ui_exports_confirm_helpers() -> None:
+    source = _read_static("operation-ui.js")
+    for symbol in (
+        "normalizeConfirmPlan",
+        "confirmCopyPlan",
+        "confirmOperation",
+        "renderOperationPlan",
+    ):
+        assert f"window.{symbol} = {symbol}" in source
+    assert "function planPreviewBody" in source
 
 
 def test_analysis_fetch_ui_exports_notify_helpers() -> None:

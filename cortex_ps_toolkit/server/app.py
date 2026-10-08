@@ -719,6 +719,7 @@ def create_app() -> Starlette:
                 copy_integrations_to_tenant,
                 ids_key="integration_ids",
                 copy_title="Integrations copy",
+                optional_bool_kwargs=frozenset({"post_copy_diff"}),
             ),
             methods=["POST"],
         ),

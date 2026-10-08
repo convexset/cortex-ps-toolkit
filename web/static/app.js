@@ -95,6 +95,7 @@ function showConfirmDialog({ title, message, proceedLabel = "Proceed", html = fa
       return;
     }
 
+    const previouslyFocused = document.activeElement;
     let accepted = false;
     titleEl.textContent = title;
     if (html) {
@@ -137,12 +138,15 @@ function showConfirmDialog({ title, message, proceedLabel = "Proceed", html = fa
       "close",
       () => {
         cleanup();
+        if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+          previouslyFocused.focus();
+        }
         resolve(accepted);
       },
       { once: true },
     );
     dialog.showModal();
-    proceedBtn.focus();
+    cancelBtn.focus();
   });
 }
 
@@ -1074,13 +1078,23 @@ async function copySelectedLists(triggerButton = null) {
     }
 
     const proceedCopy =
-      typeof confirmOperation === "function"
-        ? await confirmOperation({ title: "Confirm copy", plan, proceedLabel: "Copy", itemLabel: "list" })
-        : await showConfirmDialog({
+      typeof confirmCopyPlan === "function"
+        ? await confirmCopyPlan({
             title: "Confirm copy",
-            message: formatCopySummary(plan),
+            preview: plan,
             proceedLabel: "Copy",
-          });
+            itemLabel: "list",
+            operation: "lists.copy",
+            source_profile: source,
+            target_profile: target,
+          })
+        : typeof confirmOperation === "function"
+          ? await confirmOperation({ title: "Confirm copy", plan, proceedLabel: "Copy", itemLabel: "list" })
+          : await showConfirmDialog({
+              title: "Confirm copy",
+              message: formatCopySummary(plan),
+              proceedLabel: "Copy",
+            });
     if (!proceedCopy) {
       return;
     }

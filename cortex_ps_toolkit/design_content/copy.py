@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, Mapping, Optional
+
+from ..content.copy_modes import classify_copy_action, plan_would_abort
+from ..content.copy_plan_params import normalize_copy_kwargs
 
 from ..core.batch_copy_progress import emit_copy_item_step, make_batch_copy_progress
 from ..credentials import CredentialProfile, get_profile
@@ -29,6 +32,7 @@ from ..content.post_copy_diff import (
     POST_COPY_DIFF_PROBE_ID,
     aggregate_copy_diff_report,
     new_copy_run_telemetry,
+    summary_from_copy_diff_report,
 )
 from ..content.representation import diff_representations_classified
 from .representation import diff_design_assets
@@ -103,6 +107,9 @@ def plan_asset_copy(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
     name_suffix: Optional[str] = None,
     cache_only: bool = True,
 ) -> dict[str, Any]:
@@ -121,6 +128,20 @@ def plan_asset_copy(
         else None
     )
 
+    opts = normalize_copy_kwargs(
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        copy_mode=copy_mode,
+        rename_suffix=rename_suffix,
+        rename_map=rename_map,
+    )
+    mode = opts["copy_mode"]
+    suffix = opts["rename_suffix"]
+    rmap = opts["rename_map"]
+    legacy_name_suffix = name_suffix
+    if mode == "copy_as_new" and suffix and not legacy_name_suffix:
+        legacy_name_suffix = None
+
     entries: list[dict[str, Any]] = []
     for item_id in item_ids:
         body = get_item_body(source, asset, item_id, cache_only=cache_only)
@@ -131,23 +152,40 @@ def plan_asset_copy(
                 "reason": "pack-owned asset",
             })
             continue
+        source_name = str(body.get("name") or item_id)
         target_id, target_name = _resolve_target_identity(
             source,
             target,
             item_id,
             body,
-            name_suffix=name_suffix,
+            name_suffix=legacy_name_suffix,
         )
 
         exists = target_id in target_ids
-        if exists and stop_on_conflict:
-            action: CopyAction = "conflict"
-        elif exists and overwrite:
-            action = "update"
-        elif exists:
-            action = "skip"
+        existing_meta = {"id": target_id, "name": target_name} if exists else None
+        action, extra = classify_copy_action(
+            existing=existing_meta,
+            mode=mode,
+            source_name=source_name,
+            rename_suffix=suffix,
+            rename_map=rmap,
+            item_key=item_id,
+            name_exists=lambda n: {"id": n} if n in target_ids else None,
+            stop_on_conflict=stop_on_conflict,
+        )
+        if action == "copy_as_new":
+            target_name = str(extra.get("proposed_name") or source_name)
+            target_id = target_name
+        elif action == "copy" and not exists:
+            pass
+        elif action == "update":
+            pass
+        elif action == "skip":
+            pass
+        elif action == "conflict":
+            pass
         else:
-            action = "copy"
+            action = "copy" if not exists else "skip"
 
         write_method = "bundle"
         if asset == "layouts" and uses_direct_layout_import(target.tenant_type):
@@ -159,20 +197,52 @@ def plan_asset_copy(
         elif asset in ("incident-fields", "incident-types"):
             write_method = "direct_post"
 
-        entries.append({
+        entry_row: dict[str, Any] = {
             "source_id": item_id,
             "target_id": target_id,
             "target_name": target_name,
             "action": action,
             "write_method": write_method,
-        })
+        }
+        if extra.get("proposed_name"):
+            entry_row["proposed_name"] = extra["proposed_name"]
+        if extra.get("reason"):
+            entry_row["reason"] = extra["reason"]
+        entries.append(entry_row)
 
-    return {
+    from ..content.operation_plan import wrap_legacy_preview_plan
+
+    conflicts = [entry for entry in entries if entry.get("action") == "conflict"]
+    blocked_pack = [entry for entry in entries if entry.get("action") == "blocked_pack"]
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "asset": asset,
         "entries": entries,
+        "conflicts": conflicts,
+        "would_abort": plan_would_abort(
+            mode=mode,
+            stop_on_conflict=stop_on_conflict,
+            conflicts=conflicts,
+        ),
     }
+    extra_warnings = None
+    if blocked_pack:
+        extra_warnings = [
+            {
+                "code": "PACK_OWNED",
+                "message": f"{len(blocked_pack)} pack-owned {asset} item(s) will not be copied.",
+            },
+        ]
+    return wrap_legacy_preview_plan(
+        legacy,
+        operation=f"design_content.copy.{asset}",
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        copy_mode=copy_mode,
+        rename_suffix=suffix,
+        extra_warnings=extra_warnings,
+    )
 
 
 def _write_items_bundle(
@@ -192,6 +262,9 @@ def copy_assets_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
     name_suffix: Optional[str] = None,
     prefer_direct_on_xsoar6: bool = True,
     post_copy_diff: bool = False,
@@ -218,13 +291,16 @@ def copy_assets_to_tenant(
             item_ids,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            copy_mode=copy_mode,
+            rename_suffix=rename_suffix,
+            rename_map=rename_map,
             name_suffix=name_suffix,
         )
         progress.complete_stage()
 
-        if any(entry.get("action") == "conflict" for entry in plan["entries"]):
+        if plan.get("would_abort") or any(entry.get("action") == "conflict" for entry in plan["entries"]):
             plan["executed"] = False
-            plan["error"] = "conflicts detected (stop_on_conflict)"
+            plan["error"] = plan.get("abort_reason") or "conflicts detected (stop_on_conflict or rename collision)"
             return plan
 
         to_write: list[tuple[dict[str, Any], dict[str, Any]]] = []
@@ -241,8 +317,8 @@ def copy_assets_to_tenant(
 
         for entry in plan["entries"]:
             action = entry.get("action")
-            if action in ("skip", "blocked_pack"):
-                results.append({**entry, "status": "skipped"})
+            if action in ("skip", "blocked_pack", "conflict"):
+                results.append({**entry, "status": "skipped" if action != "conflict" else "conflict"})
                 continue
             source_body = get_item_body(source, asset, str(entry["source_id"]))
             target_id = str(entry["target_id"])
@@ -437,4 +513,5 @@ def copy_assets_to_tenant(
                 post_copy_diff=True,
             )
             plan["copy_diff_report"] = aggregate_copy_diff_report(plan)
+            plan["post_copy_diff_summary"] = summary_from_copy_diff_report(plan["copy_diff_report"])
         return plan

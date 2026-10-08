@@ -348,22 +348,61 @@ def aggregate_copy_diff_report(copy_result: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def summary_from_copy_diff_report(report: Mapping[str, Any]) -> dict[str, int]:
+    """Derive matched/mismatch/error counts from a flattened copy_diff_report."""
+    out = _empty_diff_summary()
+    for row in report.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        diff = row.get("post_copy_diff") if isinstance(row.get("post_copy_diff"), dict) else row
+        outcome = str(row.get("outcome") or diff.get("outcome") or "")
+        if diff.get("error") or outcome == "error":
+            out["errors"] += 1
+        elif outcome == "mismatch" or (diff.get("flagged") or []):
+            out["mismatched"] += 1
+        elif outcome in ("match", "match_ignored_delta"):
+            out["matched"] += 1
+            if outcome == "match_ignored_delta" or (diff.get("ignored") or []):
+                out["ignored_only"] += 1
+        elif diff.get("equal") is True:
+            out["matched"] += 1
+    return out
+
+
+def _collect_phase_diff_summaries(results: Mapping[str, Any]) -> list[Mapping[str, int]]:
+    summaries: list[Mapping[str, int]] = []
+    for phase, phase_result in results.items():
+        if not isinstance(phase_result, dict):
+            continue
+        if phase == "design" and isinstance(phase_result.get("assets"), dict):
+            for asset_result in phase_result["assets"].values():
+                if not isinstance(asset_result, dict):
+                    continue
+                summary = asset_result.get("post_copy_diff_summary")
+                if isinstance(summary, dict):
+                    total = summary.get("total")
+                    summaries.append(total if isinstance(total, dict) else summary)
+                    continue
+                report = asset_result.get("copy_diff_report")
+                if isinstance(report, dict) and report.get("rows"):
+                    summaries.append(summary_from_copy_diff_report(report))
+            continue
+        summary = phase_result.get("post_copy_diff_summary")
+        if not isinstance(summary, dict):
+            report = phase_result.get("copy_diff_report")
+            if isinstance(report, dict) and report.get("rows"):
+                summaries.append(summary_from_copy_diff_report(report))
+            continue
+        total = summary.get("total")
+        summaries.append(total if isinstance(total, dict) else summary)
+    return summaries
+
+
 def finalize_bundle_copy_diff_metadata(out: dict[str, Any]) -> None:
     """Merge phase diff summaries and top-level copy_diff_report for bundle copy."""
     if not out.get("post_copy_diff"):
         return
-    summaries: list[Mapping[str, int]] = []
-    for phase_result in (out.get("results") or {}).values():
-        if not isinstance(phase_result, dict):
-            continue
-        summary = phase_result.get("post_copy_diff_summary")
-        if not isinstance(summary, dict):
-            continue
-        total = summary.get("total")
-        if isinstance(total, dict):
-            summaries.append(total)
-        else:
-            summaries.append(summary)
+    summaries = _collect_phase_diff_summaries(out.get("results") or {})
     if summaries:
         merged = merge_diff_summaries(*summaries)
         out["post_copy_diff_summary"] = {

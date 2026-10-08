@@ -117,6 +117,7 @@ async def api_platform_admin_correlation_copy(request: Request) -> JSONResponse:
             overwrite=bool(body.get("overwrite")),
             stop_on_conflict=bool(body.get("stop_on_conflict")),
             name_suffix=body.get("name_suffix"),
+            post_copy_diff=bool(body.get("post_copy_diff")),
             on_progress=on_progress,
         )
         publish_standard_copy_outcome(result, title=title, source=source, target=target)

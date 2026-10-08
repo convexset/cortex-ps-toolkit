@@ -207,6 +207,28 @@ function initObjectSetupUi() {
     return true;
   }
 
+  function objectSetupCopyRequestFields() {
+    if (typeof readCopyModeFromRow === "function") {
+      const mode = readCopyModeFromRow("object-setup");
+      const fields = {
+        overwrite: mode.overwrite,
+        stop_on_conflict: mode.stop_on_conflict,
+        post_copy_diff: mode.post_copy_diff,
+      };
+      if (mode.copy_mode === "copy_as_new" && mode.rename_suffix) {
+        fields.name_suffix = mode.rename_suffix;
+      }
+      fields.copy_mode = mode.copy_mode;
+      fields.rename_suffix = mode.rename_suffix;
+      return fields;
+    }
+    return {
+      overwrite: document.getElementById("object-setup-copy-overwrite")?.checked,
+      stop_on_conflict: document.getElementById("object-setup-copy-stop")?.checked,
+      post_copy_diff: document.getElementById("object-setup-copy-post-diff")?.checked ?? false,
+    };
+  }
+
   function buildWorkflowPayload(source, target) {
     const extraItems = [];
     for (const row of getSelectedRows()) {
@@ -223,15 +245,20 @@ function initObjectSetupUi() {
     const selections = selectionsFromBasket(extraItems);
     const correlation_rule_names = correlationNamesFromBasket(extraItems);
     const designIds = Object.values(selections).reduce((sum, ids) => sum + (ids?.length || 0), 0);
+    const copyFields = objectSetupCopyRequestFields();
     return {
       source_profile: source,
       target_profile: target,
       selections,
-      overwrite: document.getElementById("object-setup-bundle-overwrite")?.checked,
-      stop_on_conflict: document.getElementById("object-setup-bundle-stop")?.checked,
+      overwrite: copyFields.overwrite,
+      stop_on_conflict: copyFields.stop_on_conflict,
       include_correlation_rules: correlation_rule_names.length > 0,
       correlation_rule_names,
       designIds,
+      post_copy_diff: copyFields.post_copy_diff,
+      name_suffix: copyFields.name_suffix,
+      copy_mode: copyFields.copy_mode,
+      rename_suffix: copyFields.rename_suffix,
     };
   }
 
@@ -403,18 +430,6 @@ function initObjectSetupUi() {
     }
   }
 
-  function bindBundleCopyOptionExclusivity() {
-    const overwriteEl = document.getElementById("object-setup-bundle-overwrite");
-    const stopEl = document.getElementById("object-setup-bundle-stop");
-    if (!overwriteEl || !stopEl) return;
-    overwriteEl.addEventListener("change", () => {
-      if (overwriteEl.checked) stopEl.checked = false;
-    });
-    stopEl.addEventListener("change", () => {
-      if (stopEl.checked) overwriteEl.checked = false;
-    });
-  }
-
   async function loadCapabilities() {
     const profile = activeProfile();
     capabilities = profile ? await cptkRefreshProfileCapabilities(profile) : null;
@@ -538,8 +553,7 @@ function initObjectSetupUi() {
       alert("Select a target profile.");
       return;
     }
-    const overwrite = document.getElementById("object-setup-copy-overwrite")?.checked;
-    const stopOnConflict = document.getElementById("object-setup-copy-stop")?.checked;
+    const copyFields = objectSetupCopyRequestFields();
 
     if (isAdminAsset()) {
       const names = getSelectedRows().map((row) => row.name).filter(Boolean);
@@ -551,9 +565,7 @@ function initObjectSetupUi() {
         source_profile: source,
         target_profile: target,
         rule_names: names,
-        overwrite,
-        stop_on_conflict: stopOnConflict,
-        post_copy_diff: document.getElementById("object-setup-copy-post-diff")?.checked ?? false,
+        ...copyFields,
       };
       const preview = await withLoader(
         () => api("/api/platform-admin/correlation-rules/copy/preview", {
@@ -562,13 +574,31 @@ function initObjectSetupUi() {
         }),
         "Checking copy plan…",
       );
-      const proceed = await showConfirmDialog({
-        title: "Copy correlation rules",
-        message: typeof formatPreviewEntries === "function"
-          ? formatPreviewEntries(preview, { title: "Copy correlation rules", itemLabel: "rule" })
-          : JSON.stringify(preview.entries, null, 2),
-        proceedLabel: "Copy",
-      });
+      const proceed =
+        typeof confirmCopyPlan === "function"
+          ? await confirmCopyPlan({
+              title: "Copy correlation rules",
+              preview,
+              proceedLabel: "Copy",
+              itemLabel: "rule",
+              operation: "platform_admin.correlation_copy",
+              source_profile: source,
+              target_profile: target,
+            })
+          : typeof confirmOperation === "function"
+            ? await confirmOperation({
+                title: "Copy correlation rules",
+                plan: preview,
+                proceedLabel: "Copy",
+                itemLabel: "rule",
+              })
+            : await showConfirmDialog({
+                title: "Copy correlation rules",
+                message: typeof formatPreviewEntries === "function"
+                  ? formatPreviewEntries(preview, { title: "Copy correlation rules", itemLabel: "rule" })
+                  : JSON.stringify(preview.entries, null, 2),
+                proceedLabel: "Copy",
+              });
       if (!proceed) return;
       try {
         const result = await opProgress.runCopy({
@@ -600,9 +630,7 @@ function initObjectSetupUi() {
       target_profile: target,
       asset: activeAsset,
       item_ids: ids,
-      overwrite,
-      stop_on_conflict: stopOnConflict,
-      post_copy_diff: document.getElementById("object-setup-copy-post-diff")?.checked ?? false,
+      ...copyFields,
     };
     if (typeof promptStaleCacheChoice === "function") {
       const cacheChoice = await promptStaleCacheChoice([
@@ -620,13 +648,31 @@ function initObjectSetupUi() {
       }),
       "Checking copy plan…",
     );
-    const proceed = await showConfirmDialog({
-      title: "Copy object setup content",
-      message: typeof formatPreviewEntries === "function"
-        ? formatPreviewEntries(preview, { title: "Copy object setup content", itemLabel: activeAsset })
-        : JSON.stringify(preview.entries, null, 2),
-      proceedLabel: "Copy",
-    });
+    const proceed =
+      typeof confirmCopyPlan === "function"
+        ? await confirmCopyPlan({
+            title: "Copy object setup content",
+            preview,
+            proceedLabel: "Copy",
+            itemLabel: "item",
+            operation: "design_content.copy",
+            source_profile: source,
+            target_profile: target,
+          })
+        : typeof confirmOperation === "function"
+          ? await confirmOperation({
+              title: "Copy object setup content",
+              plan: preview,
+              proceedLabel: "Copy",
+              itemLabel: "item",
+            })
+          : await showConfirmDialog({
+              title: "Copy object setup content",
+              message: typeof formatPreviewEntries === "function"
+                ? formatPreviewEntries(preview, { title: "Copy object setup content", itemLabel: activeAsset })
+                : JSON.stringify(preview.entries, null, 2),
+              proceedLabel: "Copy",
+            });
     if (!proceed) return;
     try {
       const result = await opProgress.runCopy({
@@ -766,6 +812,10 @@ function initObjectSetupUi() {
       stop_on_conflict: built.stop_on_conflict,
       include_correlation_rules: built.include_correlation_rules,
       correlation_rule_names: built.correlation_rule_names,
+      post_copy_diff: built.post_copy_diff,
+      name_suffix: built.name_suffix,
+      copy_mode: built.copy_mode,
+      rename_suffix: built.rename_suffix,
     };
     try {
       const result = await opProgress.runCopy({
@@ -832,7 +882,10 @@ function initObjectSetupUi() {
       if (!option?.value) return;
       document.getElementById("object-setup-bundle-id").value = option.dataset.name || option.value || "";
     });
-    bindBundleCopyOptionExclusivity();
+    const copyRow = document.getElementById("object-setup-copy-row");
+    if (copyRow && typeof appendCopyModeControls === "function") {
+      appendCopyModeControls(copyRow, "object-setup");
+    }
     if (typeof bindGridSelectionToolbar === "function") {
       bindGridSelectionToolbar({
         table,

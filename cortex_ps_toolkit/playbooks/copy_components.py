@@ -375,6 +375,8 @@ def _upload_script_item(
             "status": "conflict",
             "reason": f"Script {name!r} already exists on {target.slug}",
         }
+    if action == "copy_as_new":
+        name = effective_upload_name(item, fallback=name)
 
     overwrite_save = action == "update"
     target_script_id = str(item.get("target_id") or "") if overwrite_save else None
@@ -433,7 +435,7 @@ def _copy_scripts_parallel(
     upload_ids: list[str] = []
     for script_id in script_ids:
         item = plan_by_id[script_id]
-        if item.get("action") in ("copy", "update"):
+        if item.get("action") in ("copy", "update", "copy_as_new"):
             upload_ids.append(script_id)
         else:
             results.append(_upload_script_item(source, target, script_id, item))
@@ -464,6 +466,8 @@ def _upload_playbook_item(
 ) -> tuple[dict[str, Any], list[dict[str, Any]], Optional[dict[str, str]]]:
     name = str(item.get("name") or pb_id)
     action = item.get("action")
+    if action == "copy_as_new":
+        name = effective_upload_name(item, fallback=name)
     overwrite_save = action == "update"
     target_playbook_id = str(item.get("target_id") or "") if overwrite_save else None
 
@@ -890,7 +894,9 @@ def _execute_playbook_components_copy(
 
     for pb_id in plan["playbooks"]["copy_order"]:
         item = items_by_id[pb_id]
-        name = item["name"]
+        name = str(item.get("name") or pb_id)
+        if item.get("action") == "copy_as_new":
+            name = effective_upload_name(item, fallback=name)
         action = item.get("action")
         if action == "skip":
             op_info("Skipping playbook %r on %s (already exists)", name, target.slug)

@@ -40,3 +40,14 @@ Request body (all copy preview/execute routes):
 - `POST /api/playbooks/copy-shallow/preview`
 - `POST /api/playbooks/copy-components/preview`
 - `POST /api/bundles/copy/preview`
+- `POST /api/integrations/copy/preview`
+- `POST /api/design-content/{asset}/copy/preview`
+- `POST /api/platform-admin/correlation-rules/copy/preview`
+- `POST /api/platform-admin/biocs/copy/preview`
+- `POST /api/platform-admin/indicators/copy/preview`
+
+Legacy-only fields (`entries`, `has_conflicts`) are still present on design/admin previews for CLI compatibility; `items` and `summary` are authoritative for the UI.
+
+## Client normalization
+
+When a preview is wrapped only at the HTTP layer or nested under `{ plan: … }` (aborted execute), the dev server uses `normalizeConfirmPlan()` and `confirmCopyPlan()` in `web/static/operation-ui.js` before rendering the confirm dialog.

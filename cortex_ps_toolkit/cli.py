@@ -867,6 +867,9 @@ def build_parser() -> argparse.ArgumentParser:
     register_content_cli(sub, PLAYBOOKS_CLI, register_extra=_register_playbooks_extra)
     register_content_cli(sub, SCRIPTS_CLI, register_extra=_register_scripts_extra)
     register_content_cli(sub, INTEGRATIONS_CLI)
+    from .cli_bundles import register_bundles_cli
+
+    register_bundles_cli(sub)
     register_design_content_cli(sub)
     register_platform_admin_cli(sub)
     register_vault_cli(sub)

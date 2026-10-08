@@ -22,10 +22,14 @@ def execute_cross_tenant_workflow(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[dict[str, str]] = None,
     name_suffix: Optional[str] = None,
     prefer_direct_on_xsoar6: bool = True,
     include_correlation_rules: bool = False,
     correlation_rule_names: Optional[list[str]] = None,
+    post_copy_diff: bool = False,
     on_progress: Optional[ProgressCallback] = None,
 ) -> dict[str, Any]:
     """Copy assets in dependency order: fields → layouts → types → classifiers → preprocess."""
@@ -91,6 +95,7 @@ def execute_cross_tenant_workflow(
                         overwrite=overwrite,
                         stop_on_conflict=stop_on_conflict,
                         name_suffix=name_suffix,
+                        post_copy_diff=post_copy_diff,
                         on_progress=_asset_progress,
                     )
                 else:
@@ -101,8 +106,12 @@ def execute_cross_tenant_workflow(
                         item_ids,
                         overwrite=overwrite,
                         stop_on_conflict=stop_on_conflict,
-                        name_suffix=name_suffix,
+                        copy_mode=copy_mode,
+                        rename_suffix=rename_suffix,
+                        rename_map=rename_map,
+                        name_suffix=name_suffix or (rename_suffix if copy_mode == "copy_as_new" else None),
                         prefer_direct_on_xsoar6=prefer_direct_on_xsoar6,
+                        post_copy_diff=post_copy_diff,
                         on_progress=_asset_progress,
                     )
 
@@ -120,7 +129,7 @@ def execute_cross_tenant_workflow(
             progress.set_current(status="finished", halted=halted)
             staged.complete_stage("Finalize Object Bundle")
 
-    return {
+    out: dict[str, Any] = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "executed": not halted,
@@ -128,3 +137,14 @@ def execute_cross_tenant_workflow(
         "halt_reason": halt_reason,
         "assets": asset_results,
     }
+    if post_copy_diff:
+        from ..content.post_copy_diff import finalize_bundle_copy_diff_metadata
+
+        out["post_copy_diff"] = True
+        wrapped = {"post_copy_diff": True, "results": {"design": {"assets": asset_results}}}
+        finalize_bundle_copy_diff_metadata(wrapped)
+        if wrapped.get("post_copy_diff_summary"):
+            out["post_copy_diff_summary"] = wrapped["post_copy_diff_summary"]
+        if wrapped.get("copy_diff_report"):
+            out["copy_diff_report"] = wrapped["copy_diff_report"]
+    return out

@@ -297,7 +297,9 @@ After execute, the Bundles panel shows the same **copy result shell** as deep co
 | Phase | `post_copy_diff` |
 | --- | --- |
 | Scripts, playbooks (shallow), lists | Yes |
-| Integrations, design assets | No |
+| Integrations | Yes (portable definition document) |
+| Design assets (object setup) | Yes |
+| Correlation rules (object setup / bundle orchestrator) | Yes |
 
 ### Acceptance criteria
 
@@ -306,8 +308,10 @@ After execute, the Bundles panel shows the same **copy result shell** as deep co
 - [x] Bundle result UI (alerts, summary, diff panel, JSON)
 - [x] Nested copy notification flattening for summary toast
 - [x] Web UI uses WebSocket `bundles.copy` with live progress when WS connected (HTTP fallback)
-- [ ] Post-copy diff on design-phase assets
-- [ ] Catalog “hide already in basket” filter (optional)
+- [x] Post-copy diff on design-phase assets (via bundle orchestrator when **Diff after copy** enabled)
+- [x] Catalog “hide already in basket” filter
+- [x] CLI `bundles` subcommands (copy, export, resolve)
+- [x] Operation-plan confirm for integrations and object-setup copy (via `normalizeConfirmPlan`)
 
 ---
 

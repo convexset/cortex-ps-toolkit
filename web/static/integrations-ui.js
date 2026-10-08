@@ -222,7 +222,10 @@ function initIntegrationsPanel() {
   document.getElementById("integrations-copy")?.addEventListener("click", (event) => {
     copySelectedIntegrations(event.currentTarget);
   });
-  bindIntegrationsCopyOptionExclusivity();
+  const integrationsCopyRow = document.querySelector("#panel-integrations .copy-row");
+  if (integrationsCopyRow && typeof appendCopyModeControls === "function") {
+    appendCopyModeControls(integrationsCopyRow, "integrations");
+  }
 
   document.getElementById("vault-unlock-btn")?.addEventListener("click", unlockVault);
   document.getElementById("vault-lock-btn")?.addEventListener("click", lockVault);
@@ -393,12 +396,19 @@ function bindIntegrationsCopyOptionExclusivity() {
 }
 
 function integrationsCopyPayload(source, target, integrationIds) {
-  return {
+  const base = {
     source_profile: source,
     target_profile: target,
     integration_ids: integrationIds,
+  };
+  if (typeof mergeCopyPayload === "function") {
+    return mergeCopyPayload(base, "integrations");
+  }
+  return {
+    ...base,
     overwrite: document.getElementById("integrations-copy-overwrite")?.checked,
     stop_on_conflict: document.getElementById("integrations-copy-stop")?.checked,
+    post_copy_diff: document.getElementById("integrations-copy-post-diff")?.checked ?? false,
   };
 }
 
@@ -546,20 +556,45 @@ async function copySelectedIntegrations(triggerButton = null) {
       alert(formatIntegrationsCopySummary(plan));
       return;
     }
-    const proceedCopy = await showConfirmDialog({
-      title: "Confirm copy",
-      message: formatIntegrationsCopySummary(plan),
-      proceedLabel: "Copy",
-    });
+    const proceedCopy =
+      typeof confirmCopyPlan === "function"
+        ? await confirmCopyPlan({
+            title: "Confirm copy",
+            preview: plan,
+            proceedLabel: "Copy",
+            itemLabel: "integration",
+            operation: "integrations.copy",
+            source_profile: source,
+            target_profile: target,
+          })
+        : typeof confirmOperation === "function"
+          ? await confirmOperation({
+              title: "Confirm copy",
+              plan,
+              proceedLabel: "Copy",
+              itemLabel: "integration",
+            })
+          : await showConfirmDialog({
+              title: "Confirm copy",
+              message: formatIntegrationsCopySummary(plan),
+              proceedLabel: "Copy",
+            });
     if (!proceedCopy) return;
 
-    const data = await integrationsOpProgress.runCopy({
-      startMessage: `Copying ${integrationIds.length} integration(s) to ${target}…`,
-      httpCall: () => api("/api/integrations/copy", { method: "POST", body: JSON.stringify(payload) }),
-      loaderMessage: "Copying integrations…",
-      busyButton: triggerButton,
-      busyLabel: "Copying…",
-    });
+    const data = integrationsOpProgress?.runCopy
+      ? await integrationsOpProgress.runCopy({
+          startMessage: `Copying ${integrationIds.length} integration(s) to ${target}…`,
+          wsAction: "integrations.copy",
+          payload,
+          httpCall: () => api("/api/integrations/copy", { method: "POST", body: JSON.stringify(payload) }),
+          loaderMessage: "Copying integrations…",
+          busyButton: triggerButton,
+          busyLabel: "Copying…",
+        })
+      : await withLoader(
+          () => api("/api/integrations/copy", { method: "POST", body: JSON.stringify(payload) }),
+          "Copying integrations…",
+        );
     resultEl.textContent = JSON.stringify(data, null, 2);
     resultEl.classList.remove("hidden");
     if (typeof showOutcomeDialog === "function" && typeof summarizeBulkCopyResult === "function") {

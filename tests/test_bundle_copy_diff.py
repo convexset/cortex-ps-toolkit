@@ -80,3 +80,30 @@ def test_finalize_bundle_copy_diff_metadata_merges_summaries() -> None:
     assert out["post_copy_diff_summary"]["mismatched"] == 1
     assert out["post_copy_diff_summary"]["ignored_only"] == 1
     assert out["copy_diff_report"]["row_count"] == 0
+
+
+def test_finalize_bundle_copy_diff_includes_design_assets() -> None:
+    out: dict = {
+        "post_copy_diff": True,
+        "results": {
+            "design": {
+                "assets": {
+                    "incident-fields": {
+                        "copy_diff_report": {
+                            "rows": [
+                                {
+                                    "name": "field-a",
+                                    "outcome": "match",
+                                    "post_copy_diff": {"outcome": "match", "ignored": []},
+                                },
+                            ],
+                        },
+                    },
+                },
+            },
+        },
+    }
+    finalize_bundle_copy_diff_metadata(out)
+    assert out["post_copy_diff_summary"]["matched"] == 1
+    assert out["copy_diff_report"]["row_count"] == 1
+    assert out["copy_diff_report"]["rows"][0]["name"].startswith("design")

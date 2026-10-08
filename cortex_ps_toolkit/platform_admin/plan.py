@@ -9,6 +9,7 @@ from ..platforms import Platform, assert_operation_supported
 from . import api
 from .service import refresh_section_cache
 from .types import OPERATION_BY_SECTION, AdminSection
+from ..content.operation_plan import wrap_legacy_preview_plan
 
 
 def _indicator_platform_family(platform: Platform) -> str:
@@ -71,13 +72,19 @@ def plan_correlation_copy(
         action = "update" if existing else "copy"
         entries.append({"source_name": name, "target_name": target_name, "action": action})
 
-    return {
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "section": "correlation-rules",
         "entries": entries,
         "has_conflicts": any(entry.get("action") == "conflict" for entry in entries),
     }
+    return wrap_legacy_preview_plan(
+        legacy,
+        operation="platform_admin.correlation_copy",
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+    )
 
 
 def plan_correlation_delete(profile: CredentialProfile | str, names: list[str]) -> dict[str, Any]:
@@ -121,13 +128,19 @@ def plan_bioc_copy(
         action = "update" if existing else "copy"
         entries.append({"source_name": name, "target_name": target_name, "action": action})
 
-    return {
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "section": "biocs",
         "entries": entries,
         "has_conflicts": any(entry.get("action") == "conflict" for entry in entries),
     }
+    return wrap_legacy_preview_plan(
+        legacy,
+        operation="platform_admin.bioc_copy",
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+    )
 
 
 def plan_bioc_delete(profile: CredentialProfile | str, names: list[str]) -> dict[str, Any]:
@@ -178,7 +191,7 @@ def plan_indicator_copy(
         action = "update" if target_existing else "copy"
         entries.append({"source_id": indicator_id, "lookup": lookup_value, "action": action})
 
-    return {
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "section": "indicators",
@@ -186,6 +199,21 @@ def plan_indicator_copy(
         "has_conflicts": any(entry.get("action") == "conflict" for entry in entries),
         "compatible": compatible,
     }
+    extra_warnings = None
+    if not compatible:
+        extra_warnings = [
+            {
+                "code": "INDICATOR_PLATFORM",
+                "message": "Source and target indicator APIs differ; copy is not supported between these platform families.",
+            },
+        ]
+    return wrap_legacy_preview_plan(
+        legacy,
+        operation="platform_admin.indicator_copy",
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        extra_warnings=extra_warnings,
+    )
 
 
 def plan_indicator_delete(profile: CredentialProfile | str, indicator_ids: list[str]) -> dict[str, Any]:

@@ -32,6 +32,7 @@ from ..platform_admin.types import ADMIN_SECTIONS
 from ..lists.copy import copy_lists_to_tenant
 from ..playbooks.copy import copy_playbooks_to_tenant
 from ..playbooks.copy_components import copy_playbook_components_to_tenant
+from ..integrations.copy import copy_integrations_to_tenant
 from ..scripts.copy import copy_scripts_to_tenant
 from ..bundles.copy import copy_bundle_to_tenant
 from .batch_copy_ws import run_batch_copy_job, run_bundle_copy_job
@@ -158,6 +159,21 @@ async def _run_lists_copy(job_id: str, payload: dict[str, Any]) -> None:
         progress_title="Lists Copy Progress",
         ids_key="list_ids",
         copy_fn=copy_lists_to_tenant,
+        broadcast=broadcast,
+        publish_job_progress=_publish_job_progress,
+        optional_bool_kwargs=frozenset({"post_copy_diff"}),
+    )
+
+
+async def _run_integrations_copy(job_id: str, payload: dict[str, Any]) -> None:
+    await run_batch_copy_job(
+        job_id,
+        payload,
+        action="integrations.copy",
+        title="Integrations copy",
+        progress_title="Integrations Copy Progress",
+        ids_key="integration_ids",
+        copy_fn=copy_integrations_to_tenant,
         broadcast=broadcast,
         publish_job_progress=_publish_job_progress,
         optional_bool_kwargs=frozenset({"post_copy_diff"}),
@@ -557,10 +573,13 @@ async def _run_design_content_orchestrate(job_id: str, payload: dict[str, Any]) 
             {str(k): [str(item) for item in v] for k, v in selections.items()},
             overwrite=bool(payload.get("overwrite")),
             stop_on_conflict=bool(payload.get("stop_on_conflict")),
+            copy_mode=payload.get("copy_mode"),
+            rename_suffix=str(payload.get("rename_suffix") or ""),
             name_suffix=payload.get("name_suffix"),
             prefer_direct_on_xsoar6=bool(payload.get("prefer_direct_on_xsoar6", True)),
             include_correlation_rules=bool(payload.get("include_correlation_rules")),
             correlation_rule_names=[str(item) for item in (payload.get("correlation_rule_names") or [])],
+            post_copy_diff=bool(payload.get("post_copy_diff")),
             on_progress=on_progress,
         )
         await broadcast({"type": "job.completed", "job_id": job_id, "action": "design_content.orchestrate", "result": result})
@@ -611,6 +630,7 @@ async def _run_platform_admin_correlation_copy(job_id: str, payload: dict[str, A
                 overwrite=bool(payload.get("overwrite")),
                 stop_on_conflict=bool(payload.get("stop_on_conflict")),
                 name_suffix=payload.get("name_suffix"),
+                post_copy_diff=bool(payload.get("post_copy_diff")),
                 on_progress=on_progress,
             )
         await broadcast({"type": "job.completed", "job_id": job_id, "action": "platform_admin.correlation_copy", "result": result})
@@ -875,6 +895,10 @@ async def _dispatch_job(message: dict[str, Any]) -> None:
 
     if action == "lists.copy":
         asyncio.create_task(_run_lists_copy(job_id, payload))
+        return
+
+    if action == "integrations.copy":
+        asyncio.create_task(_run_integrations_copy(job_id, payload))
         return
 
     if action == "scripts.copy":

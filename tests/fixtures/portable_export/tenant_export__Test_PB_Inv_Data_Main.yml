@@ -1,0 +1,406 @@
+id: 4abc3243-3fe3-44db-8111-6b28d2bcf147
+version: 6
+vcShouldKeepItemLegacyProdMachine: false
+name: Test_PB_Inv_Data_Main
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 6ff5b861-1671-4097-8e43-513fbd481540
+    type: start
+    task:
+      id: 6ff5b861-1671-4097-8e43-513fbd481540
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 480,
+          "y": 50
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "1":
+    id: "1"
+    taskid: 6ede3a33-d81d-419d-8518-44ea6cd96bc9
+    type: regular
+    task:
+      id: 6ede3a33-d81d-419d-8518-44ea6cd96bc9
+      version: -1
+      name: Print
+      description: Prints text to war room (Markdown supported)
+      scriptName: Print
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "2"
+      - "6"
+    scriptarguments:
+      retry-count:
+        simple: "20"
+      retry-interval:
+        simple: "60"
+      value:
+        simple: Main
+    separatecontext: false
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 480,
+          "y": 210
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "2":
+    id: "2"
+    taskid: e52586e2-00f1-4452-82b5-7a2651c4cb61
+    type: condition
+    task:
+      id: e52586e2-00f1-4452-82b5-7a2651c4cb61
+      version: -1
+      name: YES!
+      type: condition
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#default#':
+      - "4"
+      "yes":
+      - "3"
+    separatecontext: false
+    conditions:
+    - label: "yes"
+      condition:
+      - - operator: isEqualString
+          left:
+            value:
+              simple: "1"
+          right:
+            value:
+              simple: "1"
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 265,
+          "y": 385
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "3":
+    id: "3"
+    taskid: 2058bda9-175a-4aba-8a11-4bfc056773d1
+    type: regular
+    task:
+      id: 2058bda9-175a-4aba-8a11-4bfc056773d1
+      version: -1
+      name: Print
+      description: Prints text to war room (Markdown supported)
+      scriptName: Print
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    scriptarguments:
+      value:
+        simple: YES!
+    separatecontext: false
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 560
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "4":
+    id: "4"
+    taskid: e789e744-4491-4e67-8a05-6a7969e5f595
+    type: playbook
+    task:
+      id: e789e744-4491-4e67-8a05-6a7969e5f595
+      version: -1
+      name: Test_PB_Inv_Data_Unexpanded_Sub
+      playbookName: Test_PB_Inv_Data_Unexpanded_Sub
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    separatecontext: true
+    continueonerrortype: ""
+    loop:
+      iscommand: false
+      exitCondition: ""
+      wait: 1
+      max: 100
+    view: |-
+      {
+        "position": {
+          "x": 480,
+          "y": 560
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "5":
+    id: "5"
+    taskid: 9ef07012-c5e3-40b8-84e5-4ebdf6d1313b
+    type: title
+    task:
+      id: 9ef07012-c5e3-40b8-84e5-4ebdf6d1313b
+      version: -1
+      name: All Done
+      type: title
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 265,
+          "y": 742.5
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "6":
+    id: "6"
+    taskid: 76c86db4-82c2-4b95-804e-fb77f3a5b801
+    type: regular
+    task:
+      id: 76c86db4-82c2-4b95-804e-fb77f3a5b801
+      version: -1
+      name: SET Key_In_Main
+      description: Set a value in context under the key you entered.
+      scriptName: Set
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#error#':
+      - "10"
+      '#none#':
+      - "7"
+    scriptarguments:
+      key:
+        simple: Key_In_Main
+      value:
+        simple: this should be displayed
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: errorPath
+    view: |-
+      {
+        "position": {
+          "x": 910,
+          "y": 385
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "7":
+    id: "7"
+    taskid: 05acf244-aba2-42be-86e0-085eb52a3e08
+    type: regular
+    task:
+      id: 05acf244-aba2-42be-86e0-085eb52a3e08
+      version: -1
+      name: Print Key_In_Main
+      description: Prints text to war room (Markdown supported)
+      scriptName: Print
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "8"
+    scriptarguments:
+      value:
+        simple: 'Key_In_Main: ${Key_In_Main}'
+    separatecontext: false
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 910,
+          "y": 560
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "8":
+    id: "8"
+    taskid: 7cc7d8ce-3d18-4ada-87b1-fade3f8b0c4a
+    type: regular
+    task:
+      id: 7cc7d8ce-3d18-4ada-87b1-fade3f8b0c4a
+      version: -1
+      name: SET Another_Key
+      description: Set a value in context under the key you entered.
+      scriptName: Set
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    scriptarguments:
+      key:
+        simple: Another_Key
+      value:
+        simple: this should be displayed for Another_Key
+    separatecontext: false
+    continueonerror: true
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 910,
+          "y": 735
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "9":
+    id: "9"
+    taskid: b1510800-2600-471e-8c1e-164bc74f059f
+    type: regular
+    task:
+      id: b1510800-2600-471e-8c1e-164bc74f059f
+      version: -1
+      name: Print Another_Key
+      description: Prints text to war room (Markdown supported)
+      scriptName: Print
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      value:
+        simple: 'Another_Key: ${Another_Key}'
+    separatecontext: false
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 910,
+          "y": 910
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+  "10":
+    id: "10"
+    taskid: 6b9e2307-3ae7-44c5-8c62-68dbc57001df
+    type: regular
+    task:
+      id: 6b9e2307-3ae7-44c5-8c62-68dbc57001df
+      version: -1
+      name: Print ERROR!
+      description: Prints text to war room (Markdown supported)
+      scriptName: Print
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      value:
+        simple: ERROR!
+    separatecontext: false
+    continueonerrortype: ""
+    view: |-
+      {
+        "position": {
+          "x": 1380,
+          "y": 560
+        }
+      }
+    note: false
+    timertriggers: []
+    ignoreworker: false
+    skipunavailable: false
+    quietmode: 0
+    isoversize: false
+    isautoswitchedtoquietmode: false
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 935,
+        "width": 1710,
+        "x": 50,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []

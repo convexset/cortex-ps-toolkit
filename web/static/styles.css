@@ -2855,6 +2855,36 @@ button.danger:disabled {
   padding: 0 0.25rem;
 }
 
+.field-help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-left: 0.2rem;
+  border-radius: 50%;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted-fg, #5a6270);
+  border: 1px solid currentColor;
+  cursor: help;
+  vertical-align: middle;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.copy-mode-fieldset label.copy-mode-option,
+.copy-mode-fieldset .copy-mode-suffix-label {
+  align-items: center;
+}
+
+.copy-mode-suffix-label {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
 .copy-rename-suffix-wrap {
   display: inline-flex;
   align-items: center;

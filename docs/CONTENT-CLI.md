@@ -220,7 +220,18 @@ Web REST: [`api/toolkit/WEB-API.md`](api/toolkit/WEB-API.md) (Object Setup secti
 
 **Saved copy bundles** (one identifier per **source profile**): `GET/POST /api/object-setup/bundles?profile=`, `GET/DELETE /api/object-setup/bundles/{id}?profile=`, `POST /api/object-setup/bundles/resolve`. Storage: `data/collections/object_setup_bundles.json` (v2: `profiles.{slug}.{bundle_id}`).
 
-**Extended Bundles section** (web `#/bundles` + REST under `/api/bundles/*`): multi-phase copy, portable ZIP export, playbook dependency scan. No dedicated CLI subcommand yet — use REST from the dev server or call `copy_bundle_to_tenant` / `build_bundle_zip_bytes` from Python. See [`BUNDLES.md`](BUNDLES.md) and [`api/toolkit/bundles.md`](api/toolkit/bundles.md).
+**Extended Bundles section** (web `#/bundles` + REST under `/api/bundles/*`): multi-phase copy, portable ZIP export, playbook dependency scan. CLI: `python3 -m cortex_ps_toolkit bundles …` (`resolve`, `copy-preview`, `copy`, `export-preview`, `export`, `presets list|get|save|delete`). See [`BUNDLES.md`](BUNDLES.md) and [`api/toolkit/bundles.md`](api/toolkit/bundles.md).
+
+```bash
+python3 -m cortex_ps_toolkit bundles copy-preview \
+  --from-profile xsoar-japac-dev --to-profile personal-xsoar6 \
+  --items-file ./basket.json
+python3 -m cortex_ps_toolkit bundles export \
+  --profile xsoar-japac-dev --items-file ./basket.json --output workflow.zip
+python3 -m cortex_ps_toolkit bundles presets list --profile xsoar-japac-dev
+python3 -m cortex_ps_toolkit bundles presets save --profile xsoar-japac-dev \
+  --name "Phishing workflow" --items-file ./basket.json
+```
 
 Example copy body (HTTP):
 

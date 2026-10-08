@@ -2680,15 +2680,25 @@ async function copyPlaybookComponentsForPanel(details, data) {
     }
 
     const proceedCopy =
-      plan.plan_version && typeof confirmOperation === "function"
-        ? await confirmOperation({ title: "Deep copy plan", plan, proceedLabel: "Run copy", itemLabel: "component" })
-        : typeof showConfirmDialog === "function"
-          ? await showConfirmDialog({
-              title: "Deep copy plan",
-              message: formatComponentsPlanSummary(plan, data),
-              proceedLabel: "Run copy",
-            })
-          : window.confirm(formatComponentsPlanSummary(plan, data));
+      typeof confirmCopyPlan === "function"
+        ? await confirmCopyPlan({
+            title: "Deep copy plan",
+            preview: plan,
+            proceedLabel: "Run copy",
+            itemLabel: "component",
+            operation: "playbooks.copy_components",
+            source_profile: source,
+            target_profile: target,
+          })
+        : plan.plan_version && typeof confirmOperation === "function"
+          ? await confirmOperation({ title: "Deep copy plan", plan, proceedLabel: "Run copy", itemLabel: "component" })
+          : typeof showConfirmDialog === "function"
+            ? await showConfirmDialog({
+                title: "Deep copy plan",
+                message: formatComponentsPlanSummary(plan, data),
+                proceedLabel: "Run copy",
+              })
+            : window.confirm(formatComponentsPlanSummary(plan, data));
     if (!proceedCopy) {
       return;
     }

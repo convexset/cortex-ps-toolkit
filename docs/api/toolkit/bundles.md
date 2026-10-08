@@ -4,6 +4,8 @@ Extended workflow: basket, saved presets, multi-phase cross-tenant copy, portabl
 
 Storage for saved presets: `data/collections/object_setup_bundles.json` (shared with Object Setup bundle APIs).
 
+**CLI:** `python3 -m cortex_ps_toolkit bundles resolve|copy-preview|copy|export-preview|export` — see [`../../BUNDLES.md`](../../BUNDLES.md).
+
 ---
 
 ## GET /api/bundles?profile={slug}
@@ -89,7 +91,7 @@ Same body as preview, plus optional:
 
 | Field | Default | Description |
 | --- | --- | --- |
-| `post_copy_diff` | `false` | After successful writes, run repr-copy-fidelity probe on **scripts**, **playbooks** (shallow), and **lists** only. |
+| `post_copy_diff` | `false` | After successful writes, run repr-copy-fidelity probe on **integrations**, **scripts**, **playbooks** (shallow), **lists**, and **design** assets in the basket (correlation rules when copied via design orchestrator). |
 | `shallow_playbooks` | `true` | Shallow playbook upload; deep component copy is not used in bundle execute. |
 
 **Response `200` (success):**

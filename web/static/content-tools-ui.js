@@ -403,9 +403,19 @@ function initContentTools(spec) {
         return;
       }
       const proceedCopy =
-        typeof confirmOperation === "function"
-          ? await confirmOperation({ title: "Confirm shallow copy", plan, proceedLabel: "Shallow copy", itemLabel })
-          : window.confirm("Proceed with shallow copy?");
+        typeof confirmCopyPlan === "function"
+          ? await confirmCopyPlan({
+              title: "Confirm shallow copy",
+              preview: plan,
+              proceedLabel: "Shallow copy",
+              itemLabel,
+              operation: "playbooks.copy_shallow",
+              source_profile: source,
+              target_profile: target,
+            })
+          : typeof confirmOperation === "function"
+            ? await confirmOperation({ title: "Confirm shallow copy", plan, proceedLabel: "Shallow copy", itemLabel })
+            : window.confirm("Proceed with shallow copy?");
       if (!proceedCopy) return;
       const copyProgress = createOperationProgress("Shallow copy playbooks");
       const data = await copyProgress.runCopy({
@@ -475,15 +485,25 @@ function initContentTools(spec) {
       }
 
       const proceedCopy =
-        typeof confirmOperation === "function"
-          ? await confirmOperation({ title: "Confirm copy", plan, proceedLabel: "Copy", itemLabel })
-          : typeof showConfirmDialog === "function"
-            ? await showConfirmDialog({
-                title: "Confirm copy",
-                message: formatCopySummary(plan),
-                proceedLabel: "Copy",
-              })
-            : window.confirm(formatCopySummary(plan));
+        typeof confirmCopyPlan === "function"
+          ? await confirmCopyPlan({
+              title: "Confirm copy",
+              preview: plan,
+              proceedLabel: "Copy",
+              itemLabel,
+              operation: `${resource}.copy`,
+              source_profile: source,
+              target_profile: target,
+            })
+          : typeof confirmOperation === "function"
+            ? await confirmOperation({ title: "Confirm copy", plan, proceedLabel: "Copy", itemLabel })
+            : typeof showConfirmDialog === "function"
+              ? await showConfirmDialog({
+                  title: "Confirm copy",
+                  message: formatCopySummary(plan),
+                  proceedLabel: "Copy",
+                })
+              : window.confirm(formatCopySummary(plan));
       if (!proceedCopy) return;
 
       const copyProgress = createOperationProgress(`Copy ${resource}`);

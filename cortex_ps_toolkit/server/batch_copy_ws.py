@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
+from ..content.copy_plan_params import copy_kwargs_from_body
 from .copy_progress_http import publish_standard_copy_outcome
 from .events import publish_notification
 
@@ -51,15 +52,15 @@ async def run_batch_copy_job(
         publish_job_progress(job_id, action, event)
 
     try:
+        copy_kw = copy_kwargs_from_body(payload)
         extra_kwargs = {key: bool(payload.get(key)) for key in optional_bool_kwargs}
         result = await asyncio.to_thread(
             copy_fn,
             source,
             target,
             item_ids,
-            overwrite=bool(payload.get("overwrite")),
-            stop_on_conflict=bool(payload.get("stop_on_conflict")),
             on_progress=on_progress,
+            **copy_kw,
             **extra_kwargs,
         )
         await broadcast({

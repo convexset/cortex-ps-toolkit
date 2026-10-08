@@ -87,34 +87,37 @@ async def api_design_content_refresh(request: Request) -> JSONResponse:
         return error_response(exc, status)
 
 
-def _parse_copy_body(body: dict[str, Any], asset: AssetKind) -> tuple[str, str, list[str], bool, bool, str | None]:
+def _parse_copy_body(body: dict[str, Any], asset: AssetKind) -> tuple[str, str, list[str], dict[str, Any]]:
+    from ..content.copy_plan_params import copy_kwargs_from_body
+
     source = str(body.get("source_profile") or "")
     target = str(body.get("target_profile") or "")
     item_ids = [str(item) for item in (body.get("item_ids") or [])]
-    overwrite = bool(body.get("overwrite"))
-    stop_on_conflict = bool(body.get("stop_on_conflict"))
-    name_suffix = body.get("name_suffix")
-    if stop_on_conflict and overwrite:
+    copy_kw = copy_kwargs_from_body(body)
+    if copy_kw["stop_on_conflict"] and copy_kw["overwrite"]:
         raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
     if not source or not target or not item_ids:
         raise ValueError("source_profile, target_profile, item_ids required")
-    return source, target, item_ids, overwrite, stop_on_conflict, str(name_suffix) if name_suffix else None
+    name_suffix = body.get("name_suffix")
+    if name_suffix:
+        copy_kw["name_suffix"] = str(name_suffix)
+    elif copy_kw["copy_mode"] == "copy_as_new" and copy_kw["rename_suffix"]:
+        copy_kw["name_suffix"] = copy_kw["rename_suffix"]
+    return source, target, item_ids, copy_kw
 
 
 async def api_design_content_copy_preview(request: Request) -> JSONResponse:
     asset = _parse_asset(request.path_params["asset"])
     try:
         body = await read_json(request)
-        source, target, item_ids, overwrite, stop_on_conflict, name_suffix = _parse_copy_body(body, asset)
+        source, target, item_ids, copy_kw = _parse_copy_body(body, asset)
         plan = await run_sync(
             plan_asset_copy,
             source,
             target,
             asset,
             item_ids,
-            overwrite=overwrite,
-            stop_on_conflict=stop_on_conflict,
-            name_suffix=name_suffix,
+            **copy_kw,
         )
         return JSONResponse(plan)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
@@ -126,7 +129,7 @@ async def api_design_content_copy(request: Request) -> JSONResponse:
     asset = _parse_asset(request.path_params["asset"])
     try:
         body = await read_json(request)
-        source, target, item_ids, overwrite, stop_on_conflict, name_suffix = _parse_copy_body(body, asset)
+        source, target, item_ids, copy_kw = _parse_copy_body(body, asset)
         prefer_direct = bool(body.get("prefer_direct_on_xsoar6", True))
         post_copy_diff = bool(body.get("post_copy_diff"))
         title = f"Copy {asset}"
@@ -137,12 +140,10 @@ async def api_design_content_copy(request: Request) -> JSONResponse:
             target,
             asset,
             item_ids,
-            overwrite=overwrite,
-            stop_on_conflict=stop_on_conflict,
-            name_suffix=name_suffix,
             prefer_direct_on_xsoar6=prefer_direct,
             post_copy_diff=post_copy_diff,
             on_progress=on_progress,
+            **copy_kw,
         )
         publish_standard_copy_outcome(result, title=title, source=source, target=target)
         return JSONResponse(result)
@@ -214,10 +215,14 @@ async def api_design_content_orchestrate(request: Request) -> JSONResponse:
             {str(k): [str(item) for item in v] for k, v in selections.items()},
             overwrite=bool(body.get("overwrite")),
             stop_on_conflict=bool(body.get("stop_on_conflict")),
+            copy_mode=body.get("copy_mode"),
+            rename_suffix=str(body.get("rename_suffix") or ""),
+            rename_map=body.get("rename_map") if isinstance(body.get("rename_map"), dict) else None,
             name_suffix=body.get("name_suffix"),
             prefer_direct_on_xsoar6=bool(body.get("prefer_direct_on_xsoar6", True)),
             include_correlation_rules=bool(body.get("include_correlation_rules")),
             correlation_rule_names=[str(item) for item in (body.get("correlation_rule_names") or [])],
+            post_copy_diff=bool(body.get("post_copy_diff")),
             on_progress=on_progress,
         )
         if result.get("executed"):

@@ -49,12 +49,13 @@ Preview: `POST /api/bundles/copy/preview` returns an **operation plan** (`plan_v
 | **Workflow basket** | List above catalog; remove per item; dirty state vs last save/load. |
 | **Catalog tabs** | Integrations, lists, scripts, playbooks, incident types, custom fields, layouts, classifiers, preprocess, correlation rules (capability-gated). |
 | **In basket column** | Shows **Yes** when the catalog row matches an item in the basket (same asset tab only). Rows also get class `in-bundle` (subtle background). |
+| **Hide already in basket** | Catalog checkbox filters out rows already in the basket (per tab). |
 | **Copy row** | Target profile + copy mode controls (overwrite, stop on conflict, copy-as-new suffix, **Diff after copy**). |
 | **Result block** | Alerts, text summary (per phase), collapsible JSON, **View classified copy diffs** when post-copy diff ran. |
 | **Export** | Portable ZIP; optional save preset first. |
 | **Dependencies** | Scan playbooks in basket for missing scripts/sub-playbooks. |
 
-Copy today uses **HTTP** `POST /api/bundles/copy` with staged progress toasts. WebSocket job `bundles.copy` is available for long runs (same payload as HTTP); UI may adopt it later.
+Copy uses WebSocket job **`bundles.copy`** when the dev-server WS is connected (`createOperationProgress` + staged toasts); otherwise **HTTP** `POST /api/bundles/copy` with the same body.
 
 ---
 
@@ -67,8 +68,9 @@ When `"post_copy_diff": true` on copy (UI: **Diff after copy**):
 | Scripts | Yes — per-row `post_copy_diff`, phase `copy_diff_report` |
 | Playbooks (shallow) | Yes |
 | Lists | Yes |
-| Integrations | No |
-| Design / object-setup | No |
+| Integrations | Yes — portable YAML document compare after cache refresh |
+| Design / object-setup | Yes — per asset via orchestrator (`design_content.copy` fidelity probe on each written item) |
+| Correlation rules (in design phase) | Yes — when included in basket / orchestrator with `post_copy_diff` |
 
 The HTTP response sets top-level `"post_copy_diff": true` and, when any probed phase ran diff, **`post_copy_diff_summary`** (merged counts) and **`copy_diff_report`** (flattened rows with `phase: name` labels). Per-phase reports remain under `results.scripts`, `results.playbooks`, etc.
 
@@ -146,20 +148,58 @@ Saved presets share Object Setup bundle storage:
 
 ---
 
+## CLI
+
+```bash
+cd cortex-ps-toolkit
+
+# Resolve basket JSON on source
+python3 -m cortex_ps_toolkit bundles resolve \
+  --profile xsoar-japac-dev \
+  --items-file ./basket.json
+
+# Plan / execute copy (same flags as list/script copy where applicable)
+python3 -m cortex_ps_toolkit bundles copy-preview \
+  --from-profile xsoar-japac-dev --to-profile personal-xsoar6 \
+  --items-file ./basket.json
+
+python3 -m cortex_ps_toolkit bundles copy \
+  --from-profile xsoar-japac-dev --to-profile personal-xsoar6 \
+  --items-file ./basket.json \
+  --post-copy-diff
+
+# Portable ZIP export
+python3 -m cortex_ps_toolkit bundles export-preview \
+  --profile xsoar-japac-dev --items-file ./basket.json
+
+python3 -m cortex_ps_toolkit bundles export \
+  --profile xsoar-japac-dev --items-file ./basket.json \
+  --output ./my-bundle.zip
+
+# Saved presets (same file as Object Setup bundle storage)
+python3 -m cortex_ps_toolkit bundles presets list --profile xsoar-japac-dev
+python3 -m cortex_ps_toolkit bundles presets save --profile xsoar-japac-dev \
+  --name "My workflow" --items-file ./basket.json
+```
+
+`basket.json` is a JSON array of `{ "asset", "id", "name" }` objects (same shape as the web API `items` field).
+
+---
+
 ## Testing
 
 ```bash
 cd cortex-ps-toolkit
 python3 -m pytest tests/test_bundle_integrations.py tests/test_bundle_export.py \
-  tests/test_copy_notifications.py tests/test_bundle_copy_diff.py -q
+  tests/test_copy_notifications.py tests/test_bundle_copy_diff.py tests/test_cli_bundles.py -q
 ```
 
-Portable YAML reference tests optionally use `~/Downloads/dev/scratch/xsoar-samples/tenant_export__*.yml`; they **skip** if samples are absent.
+Portable YAML reference tests use `tests/fixtures/portable_export/` (and fall back to `~/Downloads/dev/scratch/xsoar-samples/` when present).
 
 ---
 
 ## Known gaps / roadmap
 
-- Design-phase post-copy diff not wired through bundle orchestrator.
-- Bundle copy UI still uses HTTP + loader (WS `bundles.copy` implemented for parity with lists/scripts).
-- Full operation-plan confirm shell unified across all tools (see UI standardisation roadmap Phase 1).
+- **`rename_map`** per-item overrides in the web UI (API/CLI support suffix and map on copy).
+- Deep **component copy** rebind when sub-playbooks/scripts are renamed (upload uses new names; binding maps updated on create).
+- Manual lab QA on multi-asset bundle copy with every copy mode + diff enabled.

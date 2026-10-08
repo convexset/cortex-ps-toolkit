@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, Sequence
+from typing import Any, Literal, Mapping, Optional, Sequence
 
 from .copy_modes import CopyMode, plan_would_abort
+from .copy_plan_params import parse_copy_mode
 
 PLAN_VERSION = 1
 
@@ -16,9 +17,98 @@ def _action_to_summary_action(action: str) -> str:
         return "create"
     if action == "skip":
         return "skip"
-    if action == "conflict":
+    if action in ("conflict", "blocked", "blocked_pack", "blocked_non_copyable", "incompatible"):
         return "abort"
     return "skip"
+
+
+def entry_row_to_plan_item(entry: Mapping[str, Any]) -> dict[str, Any]:
+    """Map design/admin/integration entry rows to unified plan item rows."""
+    name = (
+        entry.get("name")
+        or entry.get("target_name")
+        or entry.get("source_name")
+        or entry.get("lookup")
+        or entry.get("integration_id")
+        or entry.get("playbook_name")
+        or entry.get("source_id")
+        or "?"
+    )
+    action = str(entry.get("action") or "skip")
+    if action == "missing":
+        action = "skip"
+    elif action == "blocked_pack":
+        action = "blocked"
+    elif action == "incompatible":
+        action = "blocked"
+    item: dict[str, Any] = {"name": str(name), "action": action}
+    if entry.get("reason"):
+        item["reason"] = str(entry["reason"])
+    if entry.get("proposed_name"):
+        item["proposed_name"] = entry["proposed_name"]
+    if entry.get("kind"):
+        item["kind"] = entry["kind"]
+    return item
+
+
+def items_from_legacy_plan(legacy: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw_items = list(legacy.get("items") or [])
+    if raw_items:
+        return raw_items
+    flat = list(legacy.get("flat_items") or [])
+    if flat:
+        return [entry_row_to_plan_item(row) for row in flat]
+    entries = list(legacy.get("entries") or [])
+    return [entry_row_to_plan_item(row) for row in entries]
+
+
+def wrap_legacy_preview_plan(
+    legacy: dict[str, Any],
+    *,
+    operation: str,
+    overwrite: bool = False,
+    stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    extra_warnings: Optional[list[dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    """Attach plan_version to previews that only expose entries or legacy counts."""
+    mode = parse_copy_mode(
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        copy_mode=copy_mode,
+    )
+    items = items_from_legacy_plan(legacy)
+    conflicts = list(legacy.get("conflicts") or [])
+    if not conflicts:
+        conflicts = [
+            row
+            for row in items
+            if str(row.get("action") or "") in ("conflict", "blocked", "blocked_pack", "blocked_non_copyable")
+        ]
+    would_abort = legacy.get("would_abort")
+    if would_abort is None:
+        would_abort = bool(legacy.get("has_conflicts")) and stop_on_conflict
+    would_abort = bool(would_abort) or plan_would_abort(
+        mode=mode,
+        stop_on_conflict=stop_on_conflict,
+        conflicts=conflicts,
+    )
+    body = {
+        **legacy,
+        "items": items,
+        "conflicts": conflicts,
+        "would_abort": bool(would_abort),
+        "overwrite": overwrite,
+        "stop_on_conflict": stop_on_conflict,
+    }
+    return wrap_copy_plan(
+        body,
+        operation=operation,
+        mode=mode,
+        rename_suffix=rename_suffix,
+        extra_warnings=extra_warnings,
+    )
 
 
 def build_plan_summary(items: Sequence[dict[str, Any]]) -> dict[str, Any]:

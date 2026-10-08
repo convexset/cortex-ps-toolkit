@@ -7,6 +7,14 @@ from typing import Any, Callable, Optional
 from ..core.batch_copy_progress import emit_copy_item_step, make_batch_copy_progress
 from ..credentials import CredentialProfile, get_profile
 from ..ops_log import op_action, op_info
+from ..content.post_copy_diff import (
+    COMPARE_MODE,
+    POST_COPY_DIFF_PROBE_ID,
+    aggregate_copy_diff_report,
+    new_copy_run_telemetry,
+    summary_from_copy_diff_report,
+)
+from ..content.representation import diff_representations_classified
 from ..design_content.copy_progress import notify_item_copied
 from ..platforms import assert_operation_supported
 from . import api
@@ -23,6 +31,7 @@ def copy_correlation_rules_to_tenant(
     overwrite: bool = False,
     stop_on_conflict: bool = False,
     name_suffix: Optional[str] = None,
+    post_copy_diff: bool = False,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     source = get_profile(source_profile) if isinstance(source_profile, str) else source_profile
@@ -93,8 +102,65 @@ def copy_correlation_rules_to_tenant(
         op_info("Refreshing correlation rules cache on %s after copy", target.slug)
         refresh_section_cache(target, "correlation-rules")
         progress.complete_stage()
-        return {
+        out: dict[str, Any] = {
             **plan,
             "results": results,
             "executed": True,
+            "post_copy_diff": post_copy_diff,
         }
+        if post_copy_diff:
+            for row in results:
+                status = row.get("status")
+                if status in ("skipped", "missing") or row.get("action") in ("skip", "missing"):
+                    continue
+                if isinstance(status, int) and not (200 <= status < 300):
+                    continue
+                source_name = str(row.get("source_name") or "")
+                target_name = str(row.get("target_name") or source_name)
+                source_rule = api.get_correlation_rule(source, source_name)
+                if not source_rule:
+                    continue
+                expected = api.prepare_correlation_write(source_rule, new_name=target_name)
+                read_back = api.get_correlation_rule(target, target_name)
+                if not read_back:
+                    payload = {
+                        "probe": POST_COPY_DIFF_PROBE_ID,
+                        "compare_mode": COMPARE_MODE,
+                        "kind": "document",
+                        "item_name": target_name,
+                        "equal": False,
+                        "outcome": "error",
+                        "error": "correlation rule not found on target after copy",
+                        "error_code": "READ_BACK_MISSING",
+                        "flagged": [],
+                        "ignored": [],
+                        "differences": [],
+                        "flagged_count": 0,
+                        "ignored_count": 0,
+                    }
+                else:
+                    classified = diff_representations_classified(expected, read_back, "document")
+                    payload = classified.to_dict()
+                    payload.update({
+                        "probe": POST_COPY_DIFF_PROBE_ID,
+                        "compare_mode": COMPARE_MODE,
+                        "kind": "document",
+                        "item_name": target_name,
+                        "outcome": (
+                            "mismatch"
+                            if payload.get("flagged")
+                            else ("match_ignored_delta" if payload.get("ignored") else "match")
+                        ),
+                    })
+                upload_status = "updated" if row.get("action") == "update" else "copied"
+                payload["upload_status"] = upload_status
+                row["name"] = target_name
+                row["post_copy_diff"] = payload
+            out["telemetry"] = new_copy_run_telemetry(
+                operation="platform_admin.correlation_copy",
+                post_copy_diff=True,
+            )
+            out["copy_diff_report"] = aggregate_copy_diff_report(out)
+            out["post_copy_diff_summary"] = summary_from_copy_diff_report(out["copy_diff_report"])
+            out["post_copy_diff_summary"]["probe"] = POST_COPY_DIFF_PROBE_ID
+        return out
