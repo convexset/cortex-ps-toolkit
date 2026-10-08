@@ -92,6 +92,7 @@ Detail: [`credentials.md`](credentials.md)
 | `/api/lists?profile=` | GET | `lists list` | List Tools grid | — (cache) | `playbooks.list`¹ | doc | doc | exp | exp | exp | exp |
 | `/api/lists/{list_id}?profile=` | GET | `lists show` | List viewer | `GET …/lists/download/{id}` | `content.lists.manage` | doc | doc | exp | exp | exp | exp |
 | `/api/lists/refresh` | POST | `lists refresh` | Refresh cache | `GET/POST …/lists` | `content.lists.manage` | doc | doc | exp | exp | exp | exp |
+| `/api/copy/name-check` | POST | — | Copy-as-new live collision check | Target cache index | same as copy | doc | doc | exp | exp | exp | exp |
 | `/api/lists/copy/preview` | POST | `lists copy-preview` | Copy wizard | `POST …/lists/save` | `content.lists.manage` | doc | doc | exp | exp | exp | exp |
 | `/api/lists/copy` | POST | `lists copy` | Copy wizard | `POST …/lists/save` | `content.lists.manage` | doc | doc | exp | exp | exp | exp |
 | `/api/lists/delete/preview` | POST | `lists delete-preview` | Delete | `POST …/lists/delete` | `content.lists.manage` | doc | doc | exp | exp | exp | exp |

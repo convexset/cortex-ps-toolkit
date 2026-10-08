@@ -14,6 +14,8 @@ from .copy_modes import proposed_name
 
 NameCheckKind = Literal["lists", "scripts", "playbooks", "design"]
 
+BASKET_NAME_CHECK_ASSETS = frozenset({"lists", "scripts", "playbooks", *ASSET_KINDS})
+
 
 def _lookup_on_target(
     target: CredentialProfile,
@@ -108,3 +110,100 @@ def proposals_from_copy_selection(
         )
         out.append({"key": key, "source_name": source_name, "proposed_name": proposed})
     return out
+
+
+def asset_to_name_check(asset: str) -> tuple[Optional[NameCheckKind], Optional[str]]:
+    """Map bundle / basket asset tab to name-check kind (+ design asset when applicable)."""
+    normalized = str(asset or "").strip()
+    if normalized in ("lists", "scripts", "playbooks"):
+        return normalized, None  # type: ignore[return-value]
+    if normalized in ASSET_KINDS:
+        return "design", normalized
+    return None, None
+
+
+def check_proposed_names_batch(
+    target_profile: CredentialProfile | str,
+    groups: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Run name checks for heterogeneous groups (e.g. bundle basket or deep copy scope)."""
+    target = get_profile(target_profile) if isinstance(target_profile, str) else target_profile
+    all_checks: list[dict[str, Any]] = []
+    by_kind: dict[str, dict[str, Any]] = {}
+    collision_count = 0
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        kind = str(group.get("kind") or "").strip().lower()
+        if kind not in ("lists", "scripts", "playbooks", "design"):
+            continue
+        asset = str(group.get("asset") or "").strip() or None
+        proposals = list(group.get("proposals") or [])
+        if not proposals and group.get("items"):
+            proposals = proposals_from_copy_selection(
+                kind=kind,  # type: ignore[arg-type]
+                items=group.get("items") or [],
+                rename_suffix=str(group.get("rename_suffix") or ""),
+                rename_map=group.get("rename_map"),
+            )
+        if not proposals:
+            continue
+        partial = check_proposed_names(
+            target,
+            kind,  # type: ignore[arg-type]
+            proposals,
+            asset=asset,
+        )
+        for row in partial.get("checks") or []:
+            enriched = {**row, "kind": kind, "asset": asset}
+            all_checks.append(enriched)
+        collision_count += int(partial.get("collision_count") or 0)
+        bucket_key = f"{kind}:{asset}" if kind == "design" and asset else kind
+        by_kind[bucket_key] = partial
+    return {
+        "target_profile": target.slug,
+        "checks": all_checks,
+        "by_kind": by_kind,
+        "collision_count": collision_count,
+        "all_available": collision_count == 0,
+        "group_count": len(by_kind),
+    }
+
+
+def check_basket_proposed_names(
+    target_profile: CredentialProfile | str,
+    basket_items: Sequence[Mapping[str, Any]],
+    *,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
+) -> dict[str, Any]:
+    """Name-check each basket row under the correct content kind (skips integrations, etc.)."""
+    grouped: dict[tuple[str, Optional[str]], list[dict[str, Any]]] = {}
+    skipped_assets: list[str] = []
+    for row in basket_items:
+        if not isinstance(row, dict):
+            continue
+        asset = str(row.get("asset") or "")
+        kind, design_asset = asset_to_name_check(asset)
+        if not kind:
+            if asset:
+                skipped_assets.append(asset)
+            continue
+        key = (kind, design_asset)
+        grouped.setdefault(key, []).append(
+            {"id": row.get("id"), "name": row.get("name") or row.get("id")},
+        )
+    groups = [
+        {
+            "kind": kind,
+            "asset": design_asset,
+            "items": items,
+            "rename_suffix": rename_suffix,
+            "rename_map": rename_map,
+        }
+        for (kind, design_asset), items in grouped.items()
+    ]
+    result = check_proposed_names_batch(target_profile, groups)
+    if skipped_assets:
+        result["skipped_assets"] = sorted(set(skipped_assets))
+    return result

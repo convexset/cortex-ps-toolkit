@@ -262,7 +262,7 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 - [x] Wire lists, scripts, playbooks, shallow copy, deep copy, bundles, integrations, object-setup to `confirmCopyPlan` / `confirmOperation`.
 - [x] Integrations, design-content, and platform-admin previews emit `plan_version: 1` via `wrap_legacy_preview_plan`.
 
-**Exit criteria:** Every bulk copy in List/Script/Playbook Tools uses server plan in confirm; results show summary + expandable issues + diff panel + JSON. **Mostly met** — delete flows and refactor confirm remain bespoke.
+**Exit criteria:** Every bulk copy in List/Script/Playbook Tools uses server plan in confirm; results show summary + expandable issues + diff panel + JSON. **Met** — delete previews and refactor preflight use `plan_version: 1` + `confirmOperation`.
 
 ### Phase 2 — Copy modes: rename / shallow (2–3 weeks)
 
@@ -272,8 +272,8 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 - [x] Delete previews emit `plan_version: 1`; UI uses `confirmDeletePlan` / `confirmOperation`.
 - [x] Refactor preview wrapped as operation plan; analysis panel uses unified confirm.
 - [x] Backend: shallow multi-playbook preview + execute (binding table in bundle + playbook shallow copy).
-- [x] Frontend: copy mode controls + suffix via `appendCopyModeControls` (live name-check API still open).
-- [x] Deep copy: `copy_as_new` upload names in `copy_components` (per-component rename map in analysis UI still open).
+- [x] Frontend: copy mode controls + suffix via `appendCopyModeControls`; batch name-check for bundles + deep copy.
+- [x] Deep copy: analysis panel uses shared copy-mode controls, per-component rename map, and multi-kind name-check.
 
 **Exit criteria:** Lab tenant demo: shallow 2 PBs with missing sub warning; rename script on conflict without overwrite. **Mostly met** in unit tests + lab manual QA item in [`BUNDLES.md`](BUNDLES.md).
 
@@ -297,7 +297,8 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 - [x] Post-copy diff on integrations/correlation (optional).
 - [x] Accessibility pass (dialog focus restore on confirm; `details` keyboard still open).
 - [ ] Optional: vend Tabulator/Plotly for offline (`web/static/vendor/`).
-- [ ] E2E integration tests for preview → confirm → result JSON shapes.
+- [x] Lab bundle QA automation: `tests/integration/test_bundle_lab_qa.py` + `./scripts/run_bundle_lab_qa.sh` (optional live execute via env).
+- [ ] Full E2E integration: preview → confirm → execute → result JSON on lab tenants (beyond script-only execute gate).
 
 ---
 

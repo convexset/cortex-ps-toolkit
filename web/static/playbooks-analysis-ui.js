@@ -2247,22 +2247,10 @@ function buildAnalysisBodyHtml(data, panelKey) {
       "<p>Preview shows what will be copied vs skipped. Integration commands are never copied. " +
         "Use <strong>Overwrite</strong> to replace existing names on the target, or <strong>Stop on conflict</strong> to abort.</p>",
     )}</h3>
-    <div class="copy-row analysis-copy-row">
+    <div class="copy-row analysis-copy-row" data-panel-key="${escapeHtml(panelKey)}">
       <label>
         Target profile
         <select class="analysis-components-target" data-source-profile="${escapeHtml(data.profile)}" data-panel-key="${escapeHtml(panelKey)}"></select>
-      </label>
-      <label class="checkbox" title="Replace playbook/script on target when the same name already exists">
-        <input type="checkbox" class="analysis-components-overwrite" data-panel-key="${escapeHtml(panelKey)}" />
-        Overwrite if name exists
-      </label>
-      <label class="checkbox" title="Abort the copy when any name already exists on the target">
-        <input type="checkbox" class="analysis-components-stop" data-panel-key="${escapeHtml(panelKey)}" />
-        Stop if name exists on target
-      </label>
-      <label class="checkbox" title="After copy, compare source vs target documents (normalized fidelity diff)">
-        <input type="checkbox" class="analysis-components-post-diff" data-panel-key="${escapeHtml(panelKey)}" />
-        Diff after copy
       </label>
       <button type="button" class="action analysis-copy-preview-btn" data-panel-key="${escapeHtml(panelKey)}">
         Preview copy plan
@@ -2285,16 +2273,62 @@ function buildAnalysisBodyHtml(data, panelKey) {
   `;
 }
 
-function bindAnalysisCopyOptionExclusivity(details) {
-  const overwriteEl = details.querySelector(".analysis-components-overwrite");
-  const stopEl = details.querySelector(".analysis-components-stop");
-  if (!overwriteEl || !stopEl) return;
-  overwriteEl.addEventListener("change", () => {
-    if (overwriteEl.checked) stopEl.checked = false;
+function analysisCopyModePrefix(details) {
+  return details?.dataset?.analysisCopyPrefix || "analysis-copy";
+}
+
+function deepCopyScopeItems(data) {
+  const items = [];
+  for (const pb of data.playbooks_in_tree || []) {
+    const id = pb.id;
+    if (!id) continue;
+    items.push({ id, name: pb.name || id, asset: "playbooks" });
+  }
+  for (const script of data.scripts_used || []) {
+    if (!script.script_id || script.copyable === false) continue;
+    items.push({
+      id: script.script_id,
+      name: script.name || script.script_id,
+      asset: "scripts",
+    });
+  }
+  return items;
+}
+
+function analysisDeepCopyPayload(details, data) {
+  const target = details.querySelector(".analysis-components-target")?.value;
+  const prefix = analysisCopyModePrefix(details);
+  const base = {
+    source_profile: data.profile,
+    target_profile: target,
+    playbook_id: data.root_playbook.id,
+  };
+  return typeof mergeCopyPayload === "function" ? mergeCopyPayload(base, prefix) : base;
+}
+
+function bindAnalysisDeepCopyModeControls(details, data, panelKey) {
+  const copyRow = details.querySelector(".analysis-copy-row");
+  const prefix = `analysis-copy-${panelKey}`;
+  details.dataset.analysisCopyPrefix = prefix;
+  if (!copyRow || typeof appendCopyModeControls !== "function") return;
+  appendCopyModeControls(copyRow, prefix);
+  const scheduleNameCheck = () => {
+    const target = details.querySelector(".analysis-components-target")?.value;
+    if (typeof scheduleCopyNameCheck === "function") {
+      scheduleCopyNameCheck(prefix, { targetProfile: target, scopeData: data });
+    }
+  };
+  copyRow.addEventListener("cptk-open-rename-map", () => {
+    const target = details.querySelector(".analysis-components-target")?.value;
+    if (typeof openRenameMapEditor === "function") {
+      void openRenameMapEditor(prefix, {
+        items: deepCopyScopeItems(data),
+        targetProfile: target,
+      });
+    }
   });
-  stopEl.addEventListener("change", () => {
-    if (stopEl.checked) overwriteEl.checked = false;
-  });
+  copyRow.addEventListener("cptk-copy-rename-changed", scheduleNameCheck);
+  details.querySelector(".analysis-components-target")?.addEventListener("change", scheduleNameCheck);
 }
 
 function updateAnalysisTargetContext(details) {
@@ -2353,7 +2387,7 @@ function createAnalysisPanel(data) {
     updateAnalysisTargetContext(details);
   }
 
-  bindAnalysisCopyOptionExclusivity(details);
+  bindAnalysisDeepCopyModeControls(details, data, panelKey);
   bindAnalysisHelp(details);
   bindAnalysisSectionNav(details, panelKey);
   bindRefactorPanel(details, data);
@@ -2647,14 +2681,7 @@ async function copyPlaybookComponentsForPanel(details, data) {
     return;
   }
 
-  const payload = {
-    source_profile: source,
-    target_profile: target,
-    playbook_id: data.root_playbook.id,
-    overwrite: details.querySelector(".analysis-components-overwrite")?.checked ?? false,
-    stop_on_conflict: details.querySelector(".analysis-components-stop")?.checked ?? false,
-    post_copy_diff: details.querySelector(".analysis-components-post-diff")?.checked ?? false,
-  };
+  const payload = analysisDeepCopyPayload(details, data);
   const resultBlock = details.querySelector(".analysis-copy-result-block");
 
   try {
@@ -4141,14 +4168,7 @@ async function previewCopyPlanForPanel(details, data) {
     alert("Choose a target profile.");
     return;
   }
-  const payload = {
-    source_profile: data.profile,
-    target_profile: target,
-    playbook_id: data.root_playbook.id,
-    overwrite: details.querySelector(".analysis-components-overwrite")?.checked ?? false,
-    stop_on_conflict: details.querySelector(".analysis-components-stop")?.checked ?? false,
-    post_copy_diff: details.querySelector(".analysis-components-post-diff")?.checked ?? false,
-  };
+  const payload = analysisDeepCopyPayload(details, data);
   const previewHost = details.querySelector(".analysis-copy-binding-preview");
   try {
     const cacheChoice = await promptStaleCacheChoice([

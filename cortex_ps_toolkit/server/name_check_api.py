@@ -8,7 +8,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ..content.copy_plan_params import copy_kwargs_from_body
-from ..content.name_check import NameCheckKind, check_proposed_names, proposals_from_copy_selection
+from ..content.name_check import (
+    check_basket_proposed_names,
+    check_proposed_names,
+    check_proposed_names_batch,
+    proposals_from_copy_selection,
+)
 from .common import error_response, read_json, run_sync
 from ..core.client import TenantApiError
 from ..platforms import UnsupportedOperation
@@ -18,11 +23,39 @@ async def api_copy_name_check(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
         target_profile = str(body.get("target_profile") or "")
+        if not target_profile:
+            raise ValueError("target_profile required")
+
+        opts = copy_kwargs_from_body(body)
+        basket_items = body.get("basket_items")
+        if isinstance(basket_items, list) and basket_items:
+            result = await run_sync(
+                check_basket_proposed_names,
+                target_profile,
+                [dict(row) for row in basket_items if isinstance(row, dict)],
+                rename_suffix=str(opts.get("rename_suffix") or ""),
+                rename_map=opts.get("rename_map"),
+            )
+            return JSONResponse(result)
+
+        groups_raw = body.get("groups")
+        if isinstance(groups_raw, list) and groups_raw:
+            groups: list[dict[str, Any]] = []
+            for group in groups_raw:
+                if not isinstance(group, dict):
+                    continue
+                entry = dict(group)
+                if not entry.get("rename_suffix"):
+                    entry["rename_suffix"] = str(opts.get("rename_suffix") or "")
+                if not entry.get("rename_map") and opts.get("rename_map"):
+                    entry["rename_map"] = opts.get("rename_map")
+                groups.append(entry)
+            result = await run_sync(check_proposed_names_batch, target_profile, groups)
+            return JSONResponse(result)
+
         kind = str(body.get("kind") or "").strip().lower()
         if kind not in ("lists", "scripts", "playbooks", "design"):
             raise ValueError("kind must be lists, scripts, playbooks, or design")
-        if not target_profile:
-            raise ValueError("target_profile required")
 
         asset = str(body.get("asset") or "").strip() or None
         proposals_raw = body.get("proposals")
@@ -31,8 +64,7 @@ async def api_copy_name_check(request: Request) -> JSONResponse:
         else:
             items = [dict(row) for row in (body.get("items") or []) if isinstance(row, dict)]
             if not items:
-                raise ValueError("proposals or items required")
-            opts = copy_kwargs_from_body(body)
+                raise ValueError("proposals, items, basket_items, or groups required")
             proposals = proposals_from_copy_selection(
                 kind=kind,  # type: ignore[arg-type]
                 items=items,

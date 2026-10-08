@@ -845,12 +845,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const copyRow = document.getElementById("bundles-copy-row");
   if (copyRow && typeof appendCopyModeControls === "function") {
     appendCopyModeControls(copyRow, "bundles");
+    const basketRenameItems = () =>
+      basketItemsForApi().map((row) => ({
+        asset: row.asset,
+        id: row.id,
+        name: row.name,
+      }));
     copyRow.addEventListener("cptk-open-rename-map", () => {
       const target = document.getElementById("bundles-copy-target")?.value;
-      const items = basketItemsForApi().map((row) => ({ id: row.id, name: row.name }));
       if (typeof openRenameMapEditor === "function") {
-        void openRenameMapEditor("bundles", { items, targetProfile: target, kind: "scripts" });
+        void openRenameMapEditor("bundles", { items: basketRenameItems(), targetProfile: target });
       }
     });
+    const scheduleBundleNameCheck = () => {
+      const target = document.getElementById("bundles-copy-target")?.value;
+      if (typeof scheduleCopyNameCheck === "function") {
+        scheduleCopyNameCheck("bundles", {
+          targetProfile: target,
+          basketItems: basketRenameItems(),
+        });
+      }
+    };
+    copyRow.addEventListener("cptk-copy-rename-changed", scheduleBundleNameCheck);
+    document.getElementById("bundles-copy-target")?.addEventListener("change", scheduleBundleNameCheck);
   }
 });

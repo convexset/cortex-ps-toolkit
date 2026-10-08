@@ -200,5 +200,5 @@ Portable YAML reference tests use `tests/fixtures/portable_export/` (and fall ba
 
 ## Known gaps / roadmap
 
-- Bundle **per-item rename map** in UI uses a single suffix default for mixed asset kinds (use List/Script/Playbook tools for kind-specific name-check).
-- Manual lab QA: see [`BUNDLE-LAB-QA.md`](BUNDLE-LAB-QA.md) + `tests/integration/test_bundle_copy_modes_lab.py`.
+- **Correlation rules** in basket: name-check skips non-index assets; copy uses platform-admin phase.
+- Manual lab QA: [`BUNDLE-LAB-QA.md`](BUNDLE-LAB-QA.md) + `./scripts/run_bundle_lab_qa.sh` (optional `CORTEX_PS_BUNDLE_LAB_EXECUTE=1`).

@@ -6,8 +6,21 @@ Run after copy-mode or bundle pipeline changes. Requires lab credentials (`pytho
 
 ```bash
 cd cortex-ps-toolkit
-pytest tests/integration/test_bundle_copy_modes_lab.py -m integration -v
+./scripts/run_bundle_lab_qa.sh
+# or:
+pytest tests/integration/test_bundle_copy_modes_lab.py tests/integration/test_bundle_lab_qa.py -m integration -v
 ```
+
+Requires lab credentials (`python -m cortex_ps_toolkit credentials import-lab`). Preview tests use a real cached script name from **xsoar-japac-dev** when available.
+
+## Optional live execute (creates renamed script on target)
+
+```bash
+export CORTEX_PS_BUNDLE_LAB_EXECUTE=1
+./scripts/run_bundle_lab_qa.sh
+```
+
+Runs one **copy-as-new** bundle execute (single script, unique suffix, post-copy diff). Only enable on lab tenants you can mutate.
 
 ## Manual web UI (dev server)
 

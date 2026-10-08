@@ -38,7 +38,7 @@ Delete preview routes wrap the same envelope with `operation` ending in `.delete
 
 ## Name check (copy-as-new helper)
 
-`POST /api/copy/name-check` — body `{ target_profile, kind, proposals[] }` or `{ target_profile, kind, items[], copy_mode, rename_suffix, rename_map? }`. Returns `{ checks: [{ key, source_name, proposed_name, exists, target_id }], collision_count, all_available }`.
+`POST /api/copy/name-check` — single kind: `{ target_profile, kind, proposals[] | items[], copy_mode, rename_suffix, rename_map? }`. **Basket (multi-kind):** `{ target_profile, basket_items: [{ asset, id, name }], rename_suffix, rename_map? }`. **Groups:** `{ target_profile, groups: [{ kind, asset?, items[], rename_suffix?, rename_map? }] }`. Returns `{ checks[], collision_count, all_available, group_count?, by_kind?, skipped_assets? }`.
 
 ## Endpoints emitting `plan_version: 1`
 

@@ -413,7 +413,10 @@ function bindCopyModeRadios(prefix) {
   sync();
 }
 
-async function openRenameMapEditor(prefix, { items = [], targetProfile = "", kind = "scripts", asset = null } = {}) {
+async function openRenameMapEditor(
+  prefix,
+  { items = [], targetProfile = "", kind = "scripts", asset = null, scopeData = null, basketItems = null } = {},
+) {
   if (!items.length) {
     alert("Select items first, then edit per-item target names.");
     return;
@@ -421,22 +424,25 @@ async function openRenameMapEditor(prefix, { items = [], targetProfile = "", kin
   const suffixEl = document.getElementById(`${prefix}-copy-rename-suffix`);
   const suffix = (suffixEl?.value || "_copy").trim();
   const existing = readRenameMap(prefix);
+  const showAsset = items.some((item) => item.asset);
   const rows = items.map((item) => {
     const key = String(item.id || item.key || item.name || "");
     const source = String(item.name || key);
     const defaultProposed = `${source}${suffix}`;
     const proposed = existing[key] || defaultProposed;
-    return { key, source, proposed };
+    return { key, source, proposed, asset: item.asset ? String(item.asset) : "" };
   });
   const lines = rows
     .map(
       (row) =>
-        `<tr data-key="${escapeHtml(row.key)}"><td>${escapeHtml(row.source)}</td>` +
+        `<tr data-key="${escapeHtml(row.key)}">` +
+        (showAsset ? `<td>${escapeHtml(row.asset)}</td>` : "") +
+        `<td>${escapeHtml(row.source)}</td>` +
         `<td><input type="text" class="rename-map-input" value="${escapeHtml(row.proposed)}" size="28" /></td></tr>`,
     )
     .join("");
   const html = `<p class="meta">Override target names for copy-as-new. Keys are tenant object ids.</p>
-    <table class="op-plan-table rename-map-table"><thead><tr><th>Source name</th><th>Target name</th></tr></thead><tbody>${lines}</tbody></table>
+    <table class="op-plan-table rename-map-table"><thead><tr>${showAsset ? "<th>Asset</th>" : ""}<th>Source name</th><th>Target name</th></tr></thead><tbody>${lines}</tbody></table>
     <p id="${prefix}-rename-map-check" class="meta rename-map-check-msg"></p>`;
   const proceed = await showConfirmDialog({
     title: "Per-item target names",
@@ -459,40 +465,88 @@ async function openRenameMapEditor(prefix, { items = [], targetProfile = "", kin
   });
   setRenameMap(prefix, map);
   if (targetProfile && typeof scheduleCopyNameCheck === "function") {
-    scheduleCopyNameCheck(prefix, { targetProfile, kind, items, asset });
+    const batchItems = basketItems || (items.some((row) => row.asset) ? items : null);
+    scheduleCopyNameCheck(prefix, {
+      targetProfile,
+      kind,
+      items,
+      asset,
+      basketItems: batchItems,
+      scopeData,
+    });
   }
 }
 
 let cptkNameCheckTimers = {};
 
-function scheduleCopyNameCheck(prefix, { targetProfile, kind, items, asset = null }) {
-  if (!targetProfile || !items?.length) return;
+function scheduleCopyNameCheck(prefix, { targetProfile, kind, items, asset = null, basketItems = null, scopeData = null }) {
+  if (!targetProfile) return;
+  if (!basketItems?.length && !scopeData && !items?.length) return;
   clearTimeout(cptkNameCheckTimers[prefix]);
   cptkNameCheckTimers[prefix] = setTimeout(() => {
-    void runCopyNameCheck(prefix, { targetProfile, kind, items, asset });
+    void runCopyNameCheck(prefix, { targetProfile, kind, items, asset, basketItems, scopeData });
   }, 400);
 }
 
-async function runCopyNameCheck(prefix, { targetProfile, kind, items, asset = null }) {
+function buildNameCheckGroupsFromScope(scopeData) {
+  if (!scopeData) return [];
+  const groups = [];
+  const playbooks = (scopeData.playbooks_in_tree || [])
+    .filter((pb) => pb.id)
+    .map((pb) => ({ id: pb.id, name: pb.name || pb.id }));
+  if (playbooks.length) {
+    groups.push({ kind: "playbooks", items: playbooks });
+  }
+  const scripts = (scopeData.scripts_used || [])
+    .filter((s) => s.script_id && s.copyable !== false)
+    .map((s) => ({ id: s.script_id, name: s.name || s.script_id }));
+  if (scripts.length) {
+    groups.push({ kind: "scripts", items: scripts });
+  }
+  return groups;
+}
+
+async function runCopyNameCheck(prefix, { targetProfile, kind, items, asset = null, basketItems = null, scopeData = null }) {
   const modeFields = readCopyModeFromRow(prefix);
   if (modeFields.copy_mode !== "copy_as_new") return;
   const msgEl = document.getElementById(`${prefix}-copy-name-check-msg`);
   try {
     const body = {
       target_profile: targetProfile,
-      kind,
-      items: items.map((row) => ({ id: row.id || row.key, name: row.name })),
       copy_mode: "copy_as_new",
       rename_suffix: modeFields.rename_suffix,
       rename_map: modeFields.rename_map,
     };
-    if (asset) body.asset = asset;
+    if (basketItems?.length) {
+      body.basket_items = basketItems.map((row) => ({
+        asset: row.asset,
+        id: row.id || row.key,
+        name: row.name,
+      }));
+    } else if (scopeData) {
+      body.groups = buildNameCheckGroupsFromScope(scopeData).map((group) => ({
+        ...group,
+        rename_suffix: modeFields.rename_suffix,
+        rename_map: modeFields.rename_map,
+      }));
+      if (!body.groups.length) return;
+    } else {
+      body.kind = kind;
+      body.items = (items || []).map((row) => ({ id: row.id || row.key, name: row.name }));
+      if (asset) body.asset = asset;
+    }
     const result = await api("/api/copy/name-check", { method: "POST", body: JSON.stringify(body) });
     const collisions = (result.checks || []).filter((c) => c.exists);
     if (msgEl) {
+      const sample = collisions
+        .slice(0, 5)
+        .map((c) => `${c.proposed_name}${c.kind ? ` (${c.kind})` : ""}`)
+        .join(", ");
       msgEl.textContent = collisions.length
-        ? `⚠ ${collisions.length} proposed name(s) already on target: ${collisions.map((c) => c.proposed_name).join(", ")}`
-        : "✓ Proposed names available on target (cache)";
+        ? `⚠ ${collisions.length} proposed name(s) collide on target${sample ? `: ${sample}` : ""}${collisions.length > 5 ? "…" : ""}`
+        : result.group_count
+          ? `✓ ${result.checks?.length || 0} proposed name(s) available across ${result.group_count} kind(s)`
+          : "✓ Proposed names available on target (cache)";
       msgEl.classList.toggle("rename-map-collision", collisions.length > 0);
     }
   } catch (err) {
@@ -603,3 +657,4 @@ window.runCopyNameCheck = runCopyNameCheck;
 window.readRenameMap = readRenameMap;
 window.setRenameMap = setRenameMap;
 window.isDeletePlan = isDeletePlan;
+window.buildNameCheckGroupsFromScope = buildNameCheckGroupsFromScope;
