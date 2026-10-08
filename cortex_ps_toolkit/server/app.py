@@ -899,6 +899,11 @@ def create_app() -> Starlette:
             methods=["POST"],
         ),
         Route(
+            "/api/platform-admin/indicators/delete/preview",
+            platform_admin_api.api_platform_admin_indicators_delete_preview,
+            methods=["POST"],
+        ),
+        Route(
             "/api/platform-admin/indicators/delete",
             platform_admin_api.api_platform_admin_indicators_delete,
             methods=["POST"],

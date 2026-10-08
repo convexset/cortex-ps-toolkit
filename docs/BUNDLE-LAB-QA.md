@@ -17,10 +17,14 @@ Requires lab credentials (`python -m cortex_ps_toolkit credentials import-lab`).
 
 ```bash
 export CORTEX_PS_BUNDLE_LAB_EXECUTE=1
+# optional: remove the renamed script on target after the test
+export CORTEX_PS_BUNDLE_LAB_CLEANUP=1
 ./scripts/run_bundle_lab_qa.sh
 ```
 
 Runs one **copy-as-new** bundle execute (single script, unique suffix, post-copy diff). Only enable on lab tenants you can mutate.
+
+Also runs **copy-components preview** (`test_copy_components_lab.py`) when caches are populated.
 
 ## Manual web UI (dev server)
 

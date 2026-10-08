@@ -31,6 +31,7 @@ def test_refactor_routes_registered() -> None:
     assert "/api/platform-admin/biocs/delete/preview" in paths
     assert "/api/platform-admin/indicators/copy/preview" in paths
     assert "/api/platform-admin/indicators/copy" in paths
+    assert "/api/platform-admin/indicators/delete/preview" in paths
     assert "/api/platform-admin/indicators/delete" in paths
     assert "/api/platform-admin/biocs/delete" in paths
     assert "/api/design-content/{asset}/delete" in paths

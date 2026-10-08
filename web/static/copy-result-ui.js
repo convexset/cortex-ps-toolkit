@@ -214,6 +214,27 @@ function collectDeepCopyAlerts(data) {
 
   alerts.push(...collectRowPostCopyDiffAlerts(data.script_results, "Script"));
   alerts.push(...collectRowPostCopyDiffAlerts(data.playbook_results, "Playbook"));
+
+  if (data.post_copy_diff && data.post_copy_diff_summary) {
+    const total = data.post_copy_diff_summary.total || data.post_copy_diff_summary;
+    const matched = total.matched ?? 0;
+    const mismatched = total.mismatched ?? 0;
+    const errors = total.errors ?? 0;
+    const ignored = total.ignored_only ?? total.ignored ?? 0;
+    const severity = mismatched > 0 || errors > 0 ? "warning" : "info";
+    const detailParts = [
+      `Matched: ${matched}, flagged mismatch: ${mismatched}, probe errors: ${errors}`,
+      ignored ? `Ignored-only deltas: ${ignored}` : "",
+      data.post_copy_diff_summary.interpretation || "",
+      "Open “View classified copy diffs” for path-level detail.",
+    ].filter(Boolean);
+    alerts.unshift({
+      severity,
+      title: "Post-copy fidelity probe",
+      detail: detailParts.join("\n"),
+    });
+  }
+
   return alerts;
 }
 

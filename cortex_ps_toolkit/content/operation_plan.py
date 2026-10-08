@@ -310,6 +310,7 @@ def delete_entry_to_plan_item(entry: Mapping[str, Any]) -> dict[str, Any]:
         or entry.get("script_id")
         or entry.get("integration_id")
         or entry.get("item_id")
+        or entry.get("id")
         or "?"
     )
     if "action" in entry:

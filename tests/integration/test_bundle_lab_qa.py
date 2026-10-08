@@ -8,6 +8,7 @@ import uuid
 import pytest
 
 from cortex_ps_toolkit.bundles.copy import copy_bundle_to_tenant, plan_bundle_copy
+from cortex_ps_toolkit.credentials import get_profile
 from cortex_ps_toolkit.scripts.service import list_cached_scripts
 
 pytestmark = pytest.mark.integration
@@ -138,3 +139,12 @@ def test_bundle_execute_copy_as_new_script_env_gated(available_lab_slugs: set[st
     assert not result.get("aborted"), result.get("reason") or result
     script_phase = (result.get("results") or {}).get("scripts") or {}
     assert script_phase.get("results") or script_phase.get("copy_diff_report") is not None
+
+    if os.environ.get("CORTEX_PS_BUNDLE_LAB_CLEANUP") == "1":
+        from cortex_ps_toolkit.scripts.cache import find_script_in_index
+        from cortex_ps_toolkit.scripts.delete import delete_scripts
+
+        target_name = f"{script_name}{suffix}"
+        entry = find_script_in_index(get_profile(TARGET), name=target_name)
+        if entry and entry.get("id"):
+            delete_scripts(TARGET, [str(entry["id"])])

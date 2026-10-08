@@ -298,7 +298,8 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 - [x] Accessibility pass (dialog focus restore on confirm; `details` keyboard still open).
 - [ ] Optional: vend Tabulator/Plotly for offline (`web/static/vendor/`).
 - [x] Lab bundle QA automation: `tests/integration/test_bundle_lab_qa.py` + `./scripts/run_bundle_lab_qa.sh` (optional live execute via env).
-- [ ] Full E2E integration: preview → confirm → execute → result JSON on lab tenants (beyond script-only execute gate).
+- [x] Lab: copy-components preview + bundle execute/cleanup env gates; offline API plan-shape tests in `test_copy_workflow_e2e.py`.
+- [ ] Full E2E integration: preview → execute → result JSON for all content types on lab tenants.
 
 ---
 

@@ -4146,9 +4146,21 @@ function renderCopyResultSummary(host, copyResult) {
   }
   appendPostCopyDiffSummaryLines(lines, copyResult.script_results, "Scripts");
   appendPostCopyDiffSummaryLines(lines, copyResult.playbook_results, "Playbooks");
+  if (copyResult.post_copy_diff && copyResult.post_copy_diff_summary) {
+    const total = copyResult.post_copy_diff_summary.total || copyResult.post_copy_diff_summary;
+    lines.push(
+      "",
+      `Fidelity probe: matched=${total.matched ?? 0}, mismatch=${total.mismatched ?? 0}, errors=${total.errors ?? 0}`,
+    );
+    if (copyResult.post_copy_diff_summary.interpretation) {
+      lines.push(copyResult.post_copy_diff_summary.interpretation);
+    }
+  }
   const hasDiffIssues =
     typeof collectDeepCopyAlerts === "function" &&
-    collectDeepCopyAlerts(copyResult).some((alert) => alert.severity === "error");
+    collectDeepCopyAlerts(copyResult).some(
+      (alert) => alert.severity === "error" || alert.severity === "warning",
+    );
   const hasFailures =
     (copyResult.script_results || []).some((row) => row.status === "failed") ||
     (copyResult.playbook_results || []).some((row) => row.status === "failed") ||

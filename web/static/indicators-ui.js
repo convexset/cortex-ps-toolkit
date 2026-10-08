@@ -158,13 +158,21 @@ function initIndicatorsUi() {
         method: "POST",
         body: JSON.stringify({ profile, names }),
       });
-      const proceed = await showConfirmDialog({
-        title: "Delete BIOCs",
-        message: typeof formatPreviewEntries === "function"
-          ? formatPreviewEntries(preview, { title: "Delete BIOCs", itemLabel: "bioc" })
-          : JSON.stringify(preview.entries, null, 2),
-        proceedLabel: "Delete",
-      });
+      const proceed =
+        typeof confirmDeletePlan === "function"
+          ? await confirmDeletePlan({
+              title: "Delete BIOCs",
+              preview,
+              proceedLabel: "Delete",
+              itemLabel: "bioc",
+            })
+          : await showConfirmDialog({
+              title: "Delete BIOCs",
+              message: typeof formatPreviewEntries === "function"
+                ? formatPreviewEntries(preview, { title: "Delete BIOCs", itemLabel: "bioc" })
+                : JSON.stringify(preview.entries, null, 2),
+              proceedLabel: "Delete",
+            });
       if (!proceed) return;
       const deletePayload = { profile, names };
       let result;
@@ -188,11 +196,27 @@ function initIndicatorsUi() {
       alert("Select indicators to delete.");
       return;
     }
-    const proceed = await showConfirmDialog({
-      title: "Delete indicators",
-      message: `Permanently delete ${ids.length} indicator(s) from ${profile}?`,
-      proceedLabel: "Delete",
-    });
+    const preview = await withLoader(
+      () =>
+        api("/api/platform-admin/indicators/delete/preview", {
+          method: "POST",
+          body: JSON.stringify({ profile, ids }),
+        }),
+      "Checking indicators…",
+    );
+    const proceed =
+      typeof confirmDeletePlan === "function"
+        ? await confirmDeletePlan({
+            title: "Delete indicators",
+            preview,
+            proceedLabel: "Delete",
+            itemLabel: "indicator",
+          })
+        : await showConfirmDialog({
+            title: "Delete indicators",
+            message: `Permanently delete ${ids.length} indicator(s) from ${profile}?`,
+            proceedLabel: "Delete",
+          });
     if (!proceed) return;
     const deletePayload = { profile, ids };
     let result;

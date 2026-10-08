@@ -42,3 +42,52 @@ def test_name_check_api(mock_find, mock_profile) -> None:
     )
     assert response.status_code == 200
     assert response.json()["all_available"] is True
+
+
+@patch("cortex_ps_toolkit.platform_admin.plan.plan_indicator_delete")
+def test_indicators_delete_preview_plan_version(mock_plan) -> None:
+    client = TestClient(create_app())
+    mock_plan.return_value = {
+        "profile": "lab",
+        "section": "indicators",
+        "entries": [{"id": "114", "deletable": True}],
+    }
+    response = client.post(
+        "/api/platform-admin/indicators/delete/preview",
+        json={"profile": "lab", "ids": ["114"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["plan_version"] == 1
+    assert body["summary"]["delete"] == 1
+    assert body["items"][0]["name"] == "114"
+
+
+@patch("cortex_ps_toolkit.server.app.plan_playbook_components_copy")
+def test_copy_components_preview_plan_shape(mock_plan) -> None:
+    from cortex_ps_toolkit.content.operation_plan import wrap_copy_plan
+
+    client = TestClient(create_app())
+    legacy = {
+        "source_profile": "src",
+        "target_profile": "tgt",
+        "items": [],
+        "scripts": {"items": []},
+        "playbooks": {"items": []},
+        "would_abort": False,
+    }
+    mock_plan.return_value = wrap_copy_plan(
+        {**legacy, "items": [{"name": "Root", "action": "copy"}]},
+        operation="playbooks.copy_components",
+        mode="skip",
+    )
+    response = client.post(
+        "/api/playbooks/copy-components/preview",
+        json={
+            "source_profile": "src",
+            "target_profile": "tgt",
+            "playbook_id": "pb-1",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["plan_version"] == 1

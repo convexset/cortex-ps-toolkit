@@ -309,6 +309,23 @@ async def api_platform_admin_indicators_copy(request: Request) -> JSONResponse:
         return error_response(exc, status)
 
 
+async def api_platform_admin_indicators_delete_preview(request: Request) -> JSONResponse:
+    try:
+        body = await read_json(request)
+        profile = str(body.get("profile") or "")
+        ids = [str(item) for item in (body.get("ids") or [])]
+        if not profile or not ids:
+            raise ValueError("profile and ids required")
+        from ..content.operation_plan import wrap_delete_plan
+        from ..platform_admin.plan import plan_indicator_delete
+
+        legacy = await run_sync(plan_indicator_delete, profile, ids)
+        plan = wrap_delete_plan(legacy, operation="platform_admin.indicators.delete")
+        return JSONResponse(plan)
+    except (UnsupportedOperation, KeyError, ValueError) as exc:
+        return error_response(exc, 400)
+
+
 async def api_platform_admin_indicators_delete(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
