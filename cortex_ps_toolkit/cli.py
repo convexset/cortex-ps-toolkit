@@ -203,6 +203,39 @@ def _cmd_xql_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_server_config_write_default(args: argparse.Namespace) -> int:
+    from .server_config import write_default_server_config
+
+    out = Path(args.output).expanduser() if args.output else None
+    try:
+        path = write_default_server_config(out, force=args.force)
+    except FileExistsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(path)
+    return 0
+
+
+def _cmd_portable_export_show_policy(args: argparse.Namespace) -> int:
+    import yaml
+
+    from .portable_export_fields import load_portable_export_policy
+
+    payload = load_portable_export_policy().to_dict()
+    section = args.section
+    if section != "all":
+        if section not in payload:
+            print(f"Unknown section: {section}", file=sys.stderr)
+            return 1
+        payload = {
+            "source": payload.get("source"),
+            "documentation": payload.get("documentation"),
+            section: payload[section],
+        }
+    print(yaml.safe_dump(payload, sort_keys=False, default_flow_style=False, allow_unicode=True), end="")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     argv = ["serve", "--host", args.host, "--port", str(args.port)]
     if args.reload:
@@ -848,6 +881,38 @@ def build_parser() -> argparse.ArgumentParser:
     xql_run.add_argument("--timeframe-hours", type=int, default=24, help="Relative timeframe in hours")
     xql_run.add_argument("--limit-rows", type=int, default=100, help="Max rows to print")
     xql_run.set_defaults(func=_cmd_xql_run)
+
+    server_cfg = sub.add_parser("server-config", help="Server config file (data/server.config.yaml)")
+    sc_sub = server_cfg.add_subparsers(dest="server_config_command", required=True)
+
+    sc_write = sc_sub.add_parser(
+        "write-default",
+        help="Write default server.config.yaml (refuses overwrite unless --force)",
+    )
+    sc_write.add_argument(
+        "-o",
+        "--output",
+        help="Output path (default: data/server.config.yaml)",
+    )
+    sc_write.add_argument("--force", action="store_true", help="Replace existing file")
+    sc_write.set_defaults(func=_cmd_server_config_write_default)
+
+    portable = sub.add_parser(
+        "portable-export",
+        help="Portable playbook/script/integration YAML field policy (code-defined)",
+    )
+    pe_sub = portable.add_subparsers(dest="portable_export_command", required=True)
+    pe_show = pe_sub.add_parser(
+        "show-policy",
+        help="Print built-in include/exclude/remap policy (YAML)",
+    )
+    pe_show.add_argument(
+        "--section",
+        choices=("all", "playbooks", "scripts", "integrations"),
+        default="all",
+        help="Which section to print",
+    )
+    pe_show.set_defaults(func=_cmd_portable_export_show_policy)
 
     serve = sub.add_parser("serve", help="Start local web UI (default :8770)")
     serve.add_argument("--host", default="127.0.0.1")

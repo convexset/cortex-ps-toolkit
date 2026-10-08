@@ -2,7 +2,9 @@
 
 When copying playbooks and scripts, the toolkit loads **cache/search JSON** from the tenant API, then shapes it for the **save/insert** endpoint on the **target** platform. This document lists every intentional field change per tenant type.
 
-Sources: `playbooks/upload_prep.py`, `playbooks/yaml_export.py`, `playbooks/yaml_bindings.py`, `playbooks/upload.py`, `scripts/upload_prep.py`, `scripts/upload.py`, `content/zip_payload.py`, `core/paths.py`.
+Sources: `playbooks/upload_prep.py`, `playbooks/yaml_export.py`, `playbooks/yaml_bindings.py`, `playbooks/upload.py`, `playbooks/portable_yaml.py`, `scripts/upload_prep.py`, `scripts/upload.py`, `scripts/portable_yaml.py`, `content/zip_payload.py`, `core/paths.py`.
+
+**Bundle ZIP / offline import:** see [`BUNDLE_PORTABLE_EXPORT.md`](BUNDLE_PORTABLE_EXPORT.md) for fields that must be stripped vs XSOAR 6 UI exports.
 
 ---
 
@@ -28,7 +30,7 @@ Sources: `playbooks/upload_prep.py`, `playbooks/yaml_export.py`, `playbooks/yaml
 
 ### Playbook YAML key rename (`rename_playbook_keys_for_yaml`)
 
-CamelCase API keys → lowercase YAML keys (e.g. `nextTasks` → `nexttasks`, `scriptId` → `scriptid`). Preserved as-is: `scriptName`, `playbookName`, `exitCondition`, `inputSections`, `fieldMapping`.
+CamelCase API keys → lowercase YAML keys (e.g. `nextTasks` → `nexttasks`, `scriptId` → `scriptid`). Preserved as-is: `scriptName`, `playbookName`, `exitCondition`, `inputSections`, `fieldMapping`. Tables live in code — see [`PORTABLE_EXPORT_FIELDS.md`](PORTABLE_EXPORT_FIELDS.md) and `python -m cortex_ps_toolkit portable-export show-policy`.
 
 ### Binding resolution (`prepare_playbook_bindings_for_upload`)
 

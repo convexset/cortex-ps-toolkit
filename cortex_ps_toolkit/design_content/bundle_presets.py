@@ -14,12 +14,17 @@ from ..lists.cache import find_list_in_index
 from ..lists.service import refresh_lists_cache
 from ..playbooks.cache import find_playbook_in_index
 from ..playbooks.service import refresh_playbooks_cache
+from ..integrations.service import (
+    find_configuration_in_cache,
+    get_integration_by_name,
+    refresh_integrations_cache,
+)
 from ..scripts.cache import find_script_in_index
 from ..scripts.service import refresh_scripts_cache
 from .service import list_cached_items
 from .types import ASSET_KINDS, AssetKind
 
-CONTENT_ASSETS = frozenset({"lists", "scripts", "playbooks"})
+CONTENT_ASSETS = frozenset({"lists", "scripts", "playbooks", "integrations"})
 
 BUNDLES_PATH = collections_dir() / "object_setup_bundles.json"
 CORRELATION_ASSET = "correlation-rules"
@@ -234,6 +239,29 @@ def resolve_bundle_items(profile: str, items: list[dict[str, Any]]) -> dict[str,
             continue
 
         if asset in CONTENT_ASSETS:
+            if asset == "integrations":
+                match = find_configuration_in_cache(resolved, saved_id)
+                if not match:
+                    refresh_integrations_cache(resolved)
+                    match = find_configuration_in_cache(resolved, saved_id)
+                if not match and saved_name:
+                    match = get_integration_by_name(resolved, saved_name)
+                if match:
+                    key = str(match.get("name") or match.get("id") or saved_id)
+                    display = str(match.get("display") or match.get("name") or saved_name)
+                    output.append(
+                        {
+                            "asset": asset,
+                            "id": key,
+                            "name": display,
+                            "type": str(raw.get("type") or "Integration definition"),
+                            "resolved": True,
+                        },
+                    )
+                else:
+                    missing.append({"asset": asset, "id": saved_id, "name": saved_name})
+                continue
+
             finder = {
                 "lists": find_list_in_index,
                 "scripts": find_script_in_index,

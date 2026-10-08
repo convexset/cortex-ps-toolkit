@@ -208,8 +208,10 @@ def get_script_by_name(profile: CredentialProfile, name: str) -> dict[str, Any]:
 
 
 def get_script_yaml(profile: CredentialProfile, script_id: str) -> str:
-    script = get_script(profile, script_id)
-    return dumps_yaml(script)
+    """Return portable script YAML (same shaping as bundle export)."""
+    from .portable_yaml import build_portable_script_yaml
+
+    return build_portable_script_yaml(profile, script_id)
 
 
 def save_script_json(profile: CredentialProfile, script: Mapping[str, Any]) -> tuple[dict[str, Any], int]:

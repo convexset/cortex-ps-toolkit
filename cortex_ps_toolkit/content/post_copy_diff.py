@@ -21,8 +21,8 @@ from .representation import ContentKind, diff_representations_classified
 FetchDoc = Callable[[CredentialProfile, str], Mapping[str, Any]]
 
 # Bump when normalization / ignore rules change (surfaced in API + UI telemetry).
-# v3: classified diff buckets (flagged vs ignored) on all post-copy probes.
-POST_COPY_DIFF_PROBE_ID = "cptk.repr-copy-fidelity/v3"
+# v4: benign tasks.*.task.playbookName null → set (post deep-copy binding).
+POST_COPY_DIFF_PROBE_ID = "cptk.repr-copy-fidelity/v4"
 
 COMPARE_MODE = "source_pre_upload_snapshot_vs_target_get_after_save"
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC = REPO_ROOT / "web" / "static"
-BUILD_ID = "20261008a"
+BUILD_ID = "20261008f"
 
 
 def _read_static(name: str) -> str:

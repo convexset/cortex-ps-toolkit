@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Optional, Sequence
 
-from ..content.copy_plan_params import normalize_copy_kwargs
+from ..content.copy_plan_params import integration_copy_plan_kwargs, normalize_copy_kwargs
 from ..content.operation_plan import wrap_copy_plan
 from ..credentials import get_profile
 from ..design_content.bundle_presets import resolve_bundle_items
@@ -12,6 +12,7 @@ from ..design_content.orchestrator import execute_cross_tenant_workflow
 from ..lists.copy import copy_lists_to_tenant, plan_lists_copy
 from ..playbooks.copy import copy_playbooks_to_tenant, plan_playbooks_copy
 from ..playbooks.copy_shallow import plan_shallow_playbooks_copy
+from ..integrations.copy import copy_integrations_to_tenant, plan_integrations_copy
 from ..scripts.copy import copy_scripts_to_tenant, plan_scripts_copy
 
 
@@ -38,6 +39,7 @@ def _partition_items(items: list[dict[str, Any]]) -> dict[str, list[dict[str, An
         "lists": [],
         "scripts": [],
         "playbooks": [],
+        "integrations": [],
     }
     for row in items:
         asset = str(row.get("asset") or row.get("kind") or "").strip()
@@ -77,12 +79,23 @@ def plan_bundle_copy(
     list_ids = [str(i.get("id")) for i in buckets["lists"]]
     script_ids = [str(i.get("id")) for i in buckets["scripts"]]
     playbook_ids = [str(i.get("id")) for i in buckets["playbooks"]]
+    integration_ids = [str(i.get("id")) for i in buckets["integrations"]]
 
     sub_plans: list[dict[str, Any]] = []
     flat_items: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     would_abort = False
 
+    if integration_ids:
+        ip = plan_integrations_copy(
+            source_profile,
+            target_profile,
+            integration_ids,
+            **integration_copy_plan_kwargs(opts),
+        )
+        sub_plans.append({"phase": "integrations", "plan": ip})
+        flat_items.extend(ip.get("items") or [])
+        would_abort = would_abort or bool(ip.get("would_abort"))
     if script_ids:
         sp = plan_scripts_copy(source_profile, target_profile, script_ids, **opts)
         sub_plans.append({"phase": "scripts", "plan": sp})
@@ -128,10 +141,11 @@ def plan_bundle_copy(
         "conflicts": [],
     }
     extra_steps = [
-        {"label": "Phase 1: scripts (if any)", "automated": True},
-        {"label": "Phase 2: playbooks shallow waves (if any)", "automated": True},
-        {"label": "Phase 3: lists (if any)", "automated": True},
-        {"label": "Phase 4: design bundle import", "automated": True},
+        {"label": "Phase 1: integration definitions (if any)", "automated": True},
+        {"label": "Phase 2: scripts (if any)", "automated": True},
+        {"label": "Phase 3: playbooks shallow waves (if any)", "automated": True},
+        {"label": "Phase 4: lists (if any)", "automated": True},
+        {"label": "Phase 5: design bundle import", "automated": True},
     ]
     return wrap_copy_plan(
         legacy,
@@ -154,6 +168,7 @@ def copy_bundle_to_tenant(
     rename_suffix: str = "",
     rename_map: Optional[Mapping[str, str]] = None,
     shallow_playbooks: bool = True,
+    post_copy_diff: bool = False,
     on_progress: Optional[Any] = None,
 ) -> dict[str, Any]:
     plan = plan_bundle_copy(
@@ -189,13 +204,22 @@ def copy_bundle_to_tenant(
     script_ids = [str(i.get("id")) for i in buckets["scripts"]]
     playbook_ids = [str(i.get("id")) for i in buckets["playbooks"]]
     list_ids = [str(i.get("id")) for i in buckets["lists"]]
+    integration_ids = [str(i.get("id")) for i in buckets["integrations"]]
 
+    if integration_ids:
+        results["integrations"] = copy_integrations_to_tenant(
+            source_profile,
+            target_profile,
+            integration_ids,
+            **integration_copy_plan_kwargs(opts),
+        )
     if script_ids:
         results["scripts"] = copy_scripts_to_tenant(
             source_profile,
             target_profile,
             script_ids,
             on_progress=on_progress,
+            post_copy_diff=post_copy_diff,
             **opts,
         )
     if playbook_ids:
@@ -207,6 +231,7 @@ def copy_bundle_to_tenant(
                 target_profile,
                 playbook_ids,
                 on_progress=on_progress,
+                post_copy_diff=post_copy_diff,
                 **opts,
             )
         else:
@@ -215,6 +240,7 @@ def copy_bundle_to_tenant(
                 target_profile,
                 playbook_ids,
                 on_progress=on_progress,
+                post_copy_diff=post_copy_diff,
                 **opts,
             )
     if list_ids:
@@ -223,6 +249,7 @@ def copy_bundle_to_tenant(
             target_profile,
             list_ids,
             on_progress=on_progress,
+            post_copy_diff=post_copy_diff,
             **opts,
         )
     if buckets["design"]:
@@ -238,9 +265,12 @@ def copy_bundle_to_tenant(
             correlation_rule_names=correlation_rule_names or None,
         )
 
-    return {
+    out: dict[str, Any] = {
         "source_profile": plan["source_profile"],
         "target_profile": plan["target_profile"],
         "operation": "bundles.copy",
         "results": results,
     }
+    if post_copy_diff:
+        out["post_copy_diff"] = True
+    return out

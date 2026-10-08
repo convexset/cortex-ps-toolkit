@@ -132,6 +132,52 @@ def test_script_ignores_arg_and_metadata_envelope() -> None:
     assert diff.equal is True
 
 
+def test_playbook_benign_playbook_name_null_to_set_on_task() -> None:
+    source = {
+        "name": "Main",
+        "tasks": {
+            "3": {
+                "type": "playbook",
+                "task": {"name": "Sub", "playbookId": "11111111-2222-3333-4444-555555555555"},
+            },
+        },
+    }
+    copied = {
+        "name": "Main",
+        "tasks": {
+            "3": {
+                "type": "playbook",
+                "task": {
+                    "name": "Sub",
+                    "playbookName": "Child_PB",
+                    "playbookId": "11111111-2222-3333-4444-555555555555",
+                },
+            },
+        },
+    }
+    classified = diff_representations_classified(source, copied, "playbook")
+    assert classified.equal is True
+    assert classified.flagged == []
+    assert any(
+        row.get("ignore_reason") == "playbook_binding:playbookName_null_to_set"
+        for row in classified.ignored
+    )
+
+
+def test_playbook_playbook_name_clearing_is_still_flagged() -> None:
+    source = {
+        "name": "Main",
+        "tasks": {"3": {"type": "playbook", "task": {"name": "Sub", "playbookName": "Child_PB"}}},
+    }
+    copied = {
+        "name": "Main",
+        "tasks": {"3": {"type": "playbook", "task": {"name": "Sub"}}},
+    }
+    classified = diff_representations_classified(source, copied, "playbook")
+    assert classified.equal is False
+    assert classified.flagged
+
+
 def test_playbook_sub_playbook_binding_by_name_only() -> None:
     source = {
         "name": "Main",

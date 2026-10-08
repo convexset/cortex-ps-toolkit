@@ -2,88 +2,67 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
-# Subset aligned with playbook-utils/playbook_utils/keys.py (CANONICAL_TO_YAML).
-_CANONICAL_TO_YAML: dict[str, str] = {
-    "startTaskId": "starttaskid",
-    "taskId": "taskid",
-    "nextTasks": "nexttasks",
-    "scriptArguments": "scriptarguments",
-    "keyValue": "keyvalue",
-    "separateContext": "separatecontext",
-    "continueOnError": "continueonerror",
-    "continueOnErrorType": "continueonerrortype",
-    "timerTriggers": "timertriggers",
-    "ignoreWorker": "ignoreworker",
-    "skipUnavailable": "skipunavailable",
-    "quietMode": "quietmode",
-    "isOverSize": "isoversize",
-    "isAutoSwitchedToQuietMode": "isautoswitchedtoquietmode",
-    "isCommand": "iscommand",
-    "ignoreCase": "ignorecase",
-    "isContext": "iscontext",
-    "playbookId": "playbookid",
-    "scriptId": "scriptid",
-    "sourcePlaybookID": "sourceplaybookid",
-    "nameRaw": "nameraw",
-    "taskIds": "taskids",
-    "scriptIds": "scriptids",
-    "missingScriptsIds": "missingscriptids",
-    "cacheVersn": "cacheversn",
-    "sizeInBytes": "sizeinbytes",
-    "fieldMapping": "fieldmapping",
-    "evidenceData": "evidencedata",
-    "reputationCalc": "reputationcalc",
-    "restrictedCompletion": "restrictedcompletion",
-    "defaultAssigneeComplex": "defaultassigneecomplex",
-    "externalFormUseAuth": "externalformuseauth",
-    "formDisplay": "formdisplay",
-    "slaReminder": "slareminder",
-    "fieldName": "fieldname",
-    "labelArg": "labelarg",
-    "optionsArg": "optionsarg",
-    "retriesCount": "retriescount",
-    "retriesInterval": "retriesinterval",
-    "completeAfterReplies": "completeafterreplies",
-    "completeAfterV2": "completeafterv2",
-    "completeAfterSla": "completeaftersla",
-    "readOnly": "readonly",
-    "gridColumns": "gridcolumns",
-    "defaultRows": "defaultrows",
-    "fieldAssociated": "fieldassociated",
-    "isTitleTask": "istitletask",
-}
-
-_YAML_PRESERVE_CASE = frozenset({
-    "scriptName",
-    "playbookName",
-    "exitCondition",
-    "inputSections",
-    "fieldMapping",
-})
+from ..portable_export_fields import load_portable_export_policy
+from ..portable_export_remaps import (
+    DEFAULT_PLAYBOOK_KEY_RENAMES,
+    DEFAULT_PLAYBOOK_PRESERVE_KEY_CASE,
+)
 
 
-def yaml_name_for_key(key: str) -> str:
+def _playbook_rename_maps() -> tuple[dict[str, str], frozenset[str]]:
+    policy = load_portable_export_policy().playbooks
+    return policy.effective_key_renames(), policy.effective_preserve_key_case()
+
+
+def yaml_name_for_key(
+    key: str,
+    *,
+    canonical_to_yaml: Mapping[str, str] | None = None,
+    preserve_case: frozenset[str] | None = None,
+) -> str:
+    renames = canonical_to_yaml if canonical_to_yaml is not None else DEFAULT_PLAYBOOK_KEY_RENAMES
+    preserved = preserve_case if preserve_case is not None else frozenset(DEFAULT_PLAYBOOK_PRESERVE_KEY_CASE)
     source = str(key)
-    if source in _YAML_PRESERVE_CASE:
+    if source in preserved:
         return source
-    for preserved in _YAML_PRESERVE_CASE:
-        if preserved.lower() == source.lower():
-            return preserved
-    return _CANONICAL_TO_YAML.get(source, source)
+    for name in preserved:
+        if name.lower() == source.lower():
+            return name
+    return renames.get(source, source)
 
 
 def rename_playbook_keys_for_yaml(obj: Any) -> Any:
     """Recursively rename keys to spellings ``/playbook/save/yaml`` accepts."""
+    canonical_to_yaml, preserve_case = _playbook_rename_maps()
+    return _rename_playbook_keys_for_yaml_impl(obj, canonical_to_yaml, preserve_case)
+
+
+def _rename_playbook_keys_for_yaml_impl(
+    obj: Any,
+    canonical_to_yaml: Mapping[str, str],
+    preserve_case: frozenset[str],
+) -> Any:
     if isinstance(obj, list):
-        return [rename_playbook_keys_for_yaml(item) for item in obj]
+        return [
+            _rename_playbook_keys_for_yaml_impl(item, canonical_to_yaml, preserve_case)
+            for item in obj
+        ]
     if not isinstance(obj, dict):
         return obj
     renamed: dict[str, Any] = {}
     for key, value in obj.items():
-        yaml_key = yaml_name_for_key(str(key))
+        yaml_key = yaml_name_for_key(
+            str(key),
+            canonical_to_yaml=canonical_to_yaml,
+            preserve_case=preserve_case,
+        )
         if yaml_key in renamed and yaml_key != str(key):
             continue
-        renamed[yaml_key] = rename_playbook_keys_for_yaml(value)
+        renamed[yaml_key] = _rename_playbook_keys_for_yaml_impl(
+            value,
+            canonical_to_yaml,
+            preserve_case,
+        )
     return renamed

@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from ..bundles.copy import copy_bundle_to_tenant, plan_bundle_copy
+from ..bundles.dependencies import plan_playbook_bundle_dependencies
+from ..bundles.export import BundleExportError, build_bundle_zip_bytes, plan_bundle_export
 from ..content.copy_plan_params import copy_kwargs_from_body
 from ..core.batch_copy_progress import chain_progress
 from ..core.client import TenantApiError
@@ -67,6 +69,80 @@ async def api_bundles_copy_preview(request: Request) -> JSONResponse:
         return error_response(exc, status)
 
 
+def _export_items_from_body(body: dict) -> tuple[str, list[dict[str, Any]] | None, str | None, str | None]:
+    source = str(body.get("source_profile") or body.get("profile") or "")
+    items_raw = body.get("items")
+    items = [dict(item) for item in items_raw] if isinstance(items_raw, list) else None
+    bundle_id = str(body.get("bundle_id") or "").strip() or None
+    bundle_name = str(body.get("bundle_name") or "").strip() or None
+    if not source:
+        raise ValueError("source_profile required")
+    if not items and not bundle_id:
+        raise ValueError("items required for basket export")
+    return source, items, bundle_id, bundle_name
+
+
+async def api_bundles_export_preview(request: Request) -> JSONResponse:
+    try:
+        body = await read_json(request)
+        source, items, bundle_id, _bundle_name = _export_items_from_body(body)
+        plan = await run_sync(
+            plan_bundle_export,
+            source,
+            items=items,
+            bundle_id=bundle_id,
+        )
+        return JSONResponse(plan)
+    except BundleExportError as exc:
+        return JSONResponse({"ok": False, "error": str(exc), "missing": exc.missing}, status_code=400)
+    except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
+        status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
+        return error_response(exc, status)
+
+
+async def api_bundles_export(request: Request) -> Response:
+    try:
+        body = await read_json(request)
+        source, items, bundle_id, bundle_name = _export_items_from_body(body)
+        zip_bytes, filename = await run_sync(
+            build_bundle_zip_bytes,
+            source,
+            items=items,
+            bundle_id=bundle_id,
+            bundle_name=bundle_name,
+        )
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except BundleExportError as exc:
+        return JSONResponse({"ok": False, "error": str(exc), "missing": exc.missing}, status_code=400)
+    except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
+        status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
+        return error_response(exc, status)
+
+
+async def api_bundles_playbook_dependencies(request: Request) -> JSONResponse:
+    try:
+        body = await read_json(request)
+        source = str(body.get("source_profile") or "")
+        playbook_ids = [str(item) for item in (body.get("playbook_ids") or [])]
+        basket_items = [dict(item) for item in (body.get("basket_items") or body.get("items") or [])]
+        if not source or not playbook_ids:
+            raise ValueError("source_profile and playbook_ids required")
+        result = await run_sync(
+            plan_playbook_bundle_dependencies,
+            source,
+            playbook_ids,
+            basket_items=basket_items,
+        )
+        return JSONResponse(result)
+    except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
+        status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
+        return error_response(exc, status)
+
+
 async def api_bundles_copy(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
@@ -75,6 +151,7 @@ async def api_bundles_copy(request: Request) -> JSONResponse:
         items = body.get("items") or []
         copy_kw = copy_kwargs_from_body(body)
         shallow_playbooks = bool(body.get("shallow_playbooks", True))
+        post_copy_diff = bool(body.get("post_copy_diff"))
         if not source or not target or not items:
             raise ValueError("source_profile, target_profile, items required")
         title = "Bundle copy"
@@ -85,6 +162,7 @@ async def api_bundles_copy(request: Request) -> JSONResponse:
             target,
             items,
             shallow_playbooks=shallow_playbooks,
+            post_copy_diff=post_copy_diff,
             on_progress=on_progress,
             **copy_kw,
         )

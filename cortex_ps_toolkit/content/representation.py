@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, MutableMapping, Sequence
 
@@ -157,6 +158,12 @@ PLAYBOOK_TASK_INNER_IGNORE_KEYS: frozenset[str] = frozenset({
     "scriptId",
     "scriptid",
 })
+
+# Post-copy diff: tasks.<id>.task.playbookName null/missing → set on target is benign (binding).
+_PLAYBOOK_TASK_PLAYBOOK_NAME_PATH = re.compile(
+    r"^tasks\.[^.]+\.task\.playbookname$",
+    re.IGNORECASE,
+)
 
 PLAYBOOK_IGNORE_KEYS = COMMON_IGNORE_KEYS | PLAYBOOK_ENVELOPE_IGNORE_KEYS | frozenset({
     "dirtyInputs",
@@ -428,6 +435,37 @@ def _leaf_key_from_path(path: str) -> str:
     return _canonical_key(segment)
 
 
+def _is_nullish(value: Any) -> bool:
+    return value is None or value == ""
+
+
+def _is_benign_playbook_name_populated_delta(row: Mapping[str, Any]) -> bool:
+    """Source had no playbookName; target read-back populated it (deep copy binding)."""
+    path = str(row.get("path") or "")
+    if not _PLAYBOOK_TASK_PLAYBOOK_NAME_PATH.match(path):
+        return False
+    if not _is_nullish(row.get("source")):
+        return False
+    return not _is_nullish(row.get("copy"))
+
+
+def _reclassify_benign_playbook_binding_deltas(
+    flagged_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    kept: list[dict[str, Any]] = []
+    benign: list[dict[str, Any]] = []
+    for row in flagged_rows:
+        if _is_benign_playbook_name_populated_delta(row):
+            benign.append({
+                **row,
+                "classification": "ignored",
+                "ignore_reason": "playbook_binding:playbookName_null_to_set",
+            })
+        else:
+            kept.append({**row, "classification": "flagged"})
+    return kept, benign
+
+
 def _ignore_reason_for_path(path: str, kind: ContentKind) -> str:
     leaf = _leaf_key_from_path(path)
     if leaf in _metadata_only_keys(kind) or leaf.lower() in _metadata_only_keys(kind):
@@ -493,12 +531,14 @@ def diff_representations_classified(
     flagged_rows: list[dict[str, Any]] = []
     _diff_values("", left_fidelity, right_fidelity, flagged_rows)
 
-    flagged_paths = {row.get("path") for row in flagged_rows}
-    flagged = [{**row, "classification": "flagged"} for row in flagged_rows]
-    ignored: list[dict[str, Any]] = []
+    flagged, binding_ignored = _reclassify_benign_playbook_binding_deltas(flagged_rows)
+    flagged_paths = {row.get("path") for row in flagged}
+    ignored: list[dict[str, Any]] = list(binding_ignored)
     for row in verbose:
         path = row.get("path")
         if path in flagged_paths:
+            continue
+        if any(item.get("path") == path for item in binding_ignored):
             continue
         ignored.append({
             **row,

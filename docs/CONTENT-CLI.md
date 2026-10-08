@@ -201,6 +201,8 @@ Web REST: [`api/toolkit/xql.md`](api/toolkit/xql.md)
 
 Incident fields, types, layouts, classifiers, pre-process rules — plus ordered cross-tenant workflow.
 
+**Overwrite** on **incident fields** and **incident types** (direct `POST` on XSOAR 6/8): the toolkit strips server `version` from the payload, so an update can hit XSOAR’s optimistic-lock error. When the plan action is `update`, `cortex_ps_toolkit/content/overwrite_retry.py` deletes the target definition, waits 0.5s, then writes again (same path as bundle / orchestrator copy). The first failed write does **not** show a persistent error toast; the UI gets a **12s self-dismissing warning** that delete+retry is in progress. A persistent error appears only if the retry fails too.
+
 ```bash
 python3 -m cortex_ps_toolkit design-content refresh --profile personal-xsoar6 --asset incident-fields
 python3 -m cortex_ps_toolkit design-content list --profile personal-xsoar6 --asset layouts

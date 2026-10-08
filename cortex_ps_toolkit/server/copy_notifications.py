@@ -40,10 +40,30 @@ def copied_item_labels(result: dict[str, Any]) -> list[str]:
                 labels.append(f"{asset}: {label}")
         return labels
 
-    for entry in result.get("results") or []:
+    for _asset, entry in _iter_copy_result_entries(result):
         if copy_entry_succeeded(entry):
-            labels.append(_entry_label(entry))
+            label = _entry_label(entry)
+            labels.append(f"{_asset}: {label}" if _asset else label)
     return labels
+
+
+def _absorb_copy_result_entries(container: dict[str, Any], *, asset_label: str = "") -> list[tuple[str, dict[str, Any]]]:
+    pairs: list[tuple[str, dict[str, Any]]] = []
+    for entry in container.get("results") or []:
+        if isinstance(entry, dict):
+            pairs.append((asset_label, entry))
+    nested_assets = container.get("assets")
+    if isinstance(nested_assets, dict):
+        for asset, asset_result in nested_assets.items():
+            if isinstance(asset_result, dict):
+                pairs.extend(_absorb_copy_result_entries(asset_result, asset_label=str(asset)))
+    return pairs
+
+
+def _flatten_batch_copy_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten list or nested phase/asset copy payloads into per-item rows."""
+    pairs = _iter_copy_result_entries(result)
+    return [entry for _asset, entry in pairs]
 
 
 def _iter_copy_result_entries(result: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
@@ -54,13 +74,18 @@ def _iter_copy_result_entries(result: dict[str, Any]) -> list[tuple[str, dict[st
         for asset, asset_result in assets.items():
             if not isinstance(asset_result, dict):
                 continue
-            for entry in asset_result.get("results") or []:
-                if isinstance(entry, dict):
-                    pairs.append((str(asset), entry))
+            pairs.extend(_absorb_copy_result_entries(asset_result, asset_label=str(asset)))
         return pairs
-    for entry in result.get("results") or []:
-        if isinstance(entry, dict):
-            pairs.append(("", entry))
+    raw_results = result.get("results")
+    if isinstance(raw_results, dict):
+        for phase, phase_result in raw_results.items():
+            if isinstance(phase_result, dict):
+                pairs.extend(_absorb_copy_result_entries(phase_result, asset_label=str(phase)))
+        return pairs
+    if isinstance(raw_results, list):
+        for entry in raw_results:
+            if isinstance(entry, dict):
+                pairs.append(("", entry))
     return pairs
 
 
@@ -114,7 +139,7 @@ def publish_batch_copy_complete_notification(
     auto_dismiss_ms: int = 0,
 ) -> None:
     """Summary banner after a standard batch copy (lists, scripts, playbooks, IOCs, …)."""
-    results = result.get("results") or []
+    results = _flatten_batch_copy_rows(result)
     ok = sum(1 for row in results if copy_entry_succeeded(row))
     failed = [row for row in results if row.get("status") == "failed"]
     skipped = sum(

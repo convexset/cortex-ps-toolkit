@@ -27,6 +27,8 @@ data/
 │   ├── xql_presets.json            # Server-side XQL presets (per profile or global)
 │   └── cleanup_log.json            # Recent cleanup actions
 │
+├── server.config.yaml              # Server + portable export field policy (optional; see presets/)
+│
 └── cache/
     └── {host}/{tenant_type}/{api_id}/
         ├── meta.json               # Cache freshness, scope counts
@@ -140,6 +142,18 @@ Rationale: playbook metrics and refactor flows resolve **script names** from the
 ---
 
 ## Cleanup policy (15-minute thread)
+
+### Server config (`data/server.config.yaml`)
+
+Logging, cache TTL threshold, and copy binding pauses. Template: `presets/server.config.yaml`. Generate defaults:
+
+```bash
+python -m cortex_ps_toolkit server-config write-default
+```
+
+Playbook/script portable export rules are **not** in this file — see [`PORTABLE_EXPORT_FIELDS.md`](PORTABLE_EXPORT_FIELDS.md) and `python -m cortex_ps_toolkit portable-export show-policy`.
+
+---
 
 Configurable via `data/collections/settings.json` or environment:
 

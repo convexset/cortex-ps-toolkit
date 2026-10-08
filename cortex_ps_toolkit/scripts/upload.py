@@ -9,11 +9,8 @@ from ..core.paths import uses_cortex_platform_content_api
 from ..credentials import CredentialProfile, get_profile
 from ..platforms import Platform
 from . import api
-from .upload_prep import (
-    prepare_script_for_save,
-    script_to_xsiam_yaml_export,
-    script_to_yaml_export,
-)
+from .portable_yaml import script_to_portable_yaml_document
+from .upload_prep import prepare_script_for_save, script_to_xsiam_yaml_export
 
 
 def save_script_document(
@@ -46,6 +43,10 @@ def save_script_document(
     if uses_cortex_platform_content_api(platform):
         yaml_source = script_to_xsiam_yaml_export(prepared)
     else:
-        yaml_source = script_to_yaml_export(prepared)
+        yaml_source = script_to_portable_yaml_document(
+            prepared,
+            already_prepared=True,
+            pack_source=script,
+        )
     yaml_text = dumps_yaml(yaml_source)
     return api.save_script_yaml(resolved, yaml_text, filename=filename)

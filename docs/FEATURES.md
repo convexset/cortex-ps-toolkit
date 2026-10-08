@@ -10,7 +10,7 @@ Behavioural specs for Cortex PS Toolkit features. Implementation targets Python 
 | XQL Query Tool | Run queries, history by ID, reload results + charts |
 | Playbook Tools | Navigate cache, **refresh playbooks+scripts**, refactor, copy playbooks, copy component subs+scripts |
 | Script Tools | Navigate cache, refresh scripts, copy scripts to other tenant |
-| Bundles (planned) | Cross-tenant solution bundles — lists, scripts, playbooks, design assets — see [`UI_STANDARDISATION_AND_COPY_ROADMAP.md`](UI_STANDARDISATION_AND_COPY_ROADMAP.md) |
+| Bundles | Basket + saved presets, catalog tabs (incl. **custom integration definitions**), cross-tenant copy (integrations → scripts → playbooks → lists → design), portable ZIP export (`integrations/*.yml`, scripts, playbooks, …), playbook dependency scan — see [`BUNDLE_PORTABLE_EXPORT.md`](BUNDLE_PORTABLE_EXPORT.md) |
 
 ---
 

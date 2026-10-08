@@ -5,40 +5,14 @@ from __future__ import annotations
 import copy
 from typing import Any, Mapping, MutableMapping
 
-# Server-owned metadata returned by automation/load but not needed on save.
-SCRIPT_DROP_KEYS: frozenset[str] = frozenset({
-    "MainEngineInfo",
-    "cacheVersn",
-    "created",
-    "modified",
-    "definitionId",
-    "itemVersion",
-    "fromServerVersion",
-    "toServerVersion",
-    "sizeInBytes",
-    "commitMessage",
-    "prevName",
-    "propagationLabels",
-    "sequenceNumber",
-    "primaryTerm",
-    "syncHash",
-    "numericId",
-    "indexName",
-    "sortValues",
-    "highlight",
-    "packID",
-    "packName",
-    "user",
-    "shouldCommit",
-    "shouldPublish",
-})
+from ..portable_export_fields import DEFAULT_SCRIPT_EXCLUDE, load_portable_export_policy
+from ..portable_export_remaps import DEFAULT_SCRIPT_KEY_RENAMES
 
-# API JSON uses camelCase; YAML import expects lowercase for these fields.
-SCRIPT_YAML_KEY_RENAMES: dict[str, str] = {
-    "dockerImage": "dockerimage",
-    "scriptTarget": "scripttarget",
-    "arguments": "args",
-}
+# Back-compat alias; see ``portable_export_fields.DEFAULT_SCRIPT_EXCLUDE``.
+SCRIPT_DROP_KEYS: frozenset[str] = DEFAULT_SCRIPT_EXCLUDE
+
+# Back-compat alias; effective renames follow server config.
+SCRIPT_YAML_KEY_RENAMES: dict[str, str] = dict(DEFAULT_SCRIPT_KEY_RENAMES)
 
 
 def _drop_private_keys(node: MutableMapping[str, Any]) -> None:
@@ -49,8 +23,9 @@ def _drop_private_keys(node: MutableMapping[str, Any]) -> None:
 
 def _drop_server_keys(node: MutableMapping[str, Any]) -> None:
     _drop_private_keys(node)
+    drop = load_portable_export_policy().scripts.effective_exclude()
     for key in list(node.keys()):
-        if key in SCRIPT_DROP_KEYS:
+        if key in drop or str(key).lower() in {k.lower() for k in drop}:
             del node[key]
 
 
@@ -82,7 +57,8 @@ def prepare_script_for_save(
 def script_to_yaml_export(script: Mapping[str, Any]) -> dict[str, Any]:
     """Convert prepared script JSON to YAML-export key names (e.g. dockerimage)."""
     doc = copy.deepcopy(dict(script))
-    for src, dest in SCRIPT_YAML_KEY_RENAMES.items():
+    renames = load_portable_export_policy().scripts.effective_key_renames()
+    for src, dest in renames.items():
         if src in doc:
             doc[dest] = doc.pop(src)
         elif dest in doc and src not in doc:

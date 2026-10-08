@@ -143,6 +143,9 @@ def test_configuration_to_yaml_document_shape() -> None:
     assert document["name"] == "CustomInt"
     assert document["commonfields"]["id"] == "CustomInt"
     assert document["script"]["script"] == "print('ok')"
+    assert "fromversion" not in document
+    assert document["signature"] == ""
+    assert document["vcShouldKeepItemLegacyProdMachine"] is False
 
 
 @patch("cortex_ps_toolkit.integrations.delete.api.delete_integration_configuration")

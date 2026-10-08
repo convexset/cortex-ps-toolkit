@@ -8,7 +8,8 @@ from typing import Any, Mapping, Optional
 import requests
 
 from ..credentials import CredentialProfile
-from ..ops_log import log_api_request, log_api_response, op_error, op_info
+from ..ops_log import log_api_request, log_api_response, op_error, op_info, op_warn
+from .quiet_api_failures import tenant_api_failure_toast_suppressed
 from ..platforms import Platform
 from .paths import XSOAR_PUBLIC_V1_PREFIX, xsoar_shaped_path
 
@@ -83,6 +84,18 @@ class TenantClient:
         suffix = suffix if suffix.startswith("/") else f"/{suffix}"
         return f"{self.profile.host}{base}{suffix}"
 
+    def _report_http_failure(self, action: str, *, elapsed_ms: int, status_code: int) -> None:
+        if tenant_api_failure_toast_suppressed():
+            op_warn(
+                "%s — failed after %dms (HTTP %s); handled by caller",
+                action,
+                elapsed_ms,
+                status_code,
+                notify=False,
+            )
+            return
+        op_error("%s — failed after %dms (HTTP %s)", action, elapsed_ms, status_code)
+
     def _raise_for_status(self, response: requests.Response, action: str) -> None:
         if response.ok:
             return
@@ -91,7 +104,8 @@ class TenantClient:
             body = response.json()
         except Exception:
             body = response.text[:2000]
-        op_error("%s failed: HTTP %s", action, response.status_code)
+        if not tenant_api_failure_toast_suppressed():
+            op_error("%s failed: HTTP %s", action, response.status_code)
         raise TenantApiError(
             f"{action} failed: HTTP {response.status_code} {body!r}",
             status_code=response.status_code,
@@ -139,7 +153,7 @@ class TenantClient:
         if response.ok:
             op_info("%s — completed in %dms (HTTP %s)", action, elapsed_ms, response.status_code)
         else:
-            op_error("%s — failed after %dms (HTTP %s)", action, elapsed_ms, response.status_code)
+            self._report_http_failure(action, elapsed_ms=elapsed_ms, status_code=response.status_code)
         self._raise_for_status(response, action)
         return response
 
@@ -230,7 +244,7 @@ class TenantClient:
         if response.ok:
             op_info("%s — completed in %dms (HTTP %s)", action, elapsed_ms, response.status_code)
         else:
-            op_error("%s — failed after %dms (HTTP %s)", action, elapsed_ms, response.status_code)
+            self._report_http_failure(action, elapsed_ms=elapsed_ms, status_code=response.status_code)
         self._raise_for_status(response, action)
         return self._response_json(response), response.status_code
 

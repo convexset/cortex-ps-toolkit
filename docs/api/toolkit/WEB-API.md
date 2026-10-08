@@ -22,7 +22,17 @@ Refresh matrix: `python3 -m cortex_ps_toolkit platforms list`
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/api/health` | GET | — | (startup) | — | — | doc | doc | doc | doc | doc | doc |
 | `/api/settings` | GET/PATCH | — | Settings panel | — | — | doc | doc | doc | doc | doc | doc |
+| `/api/server-config` | GET | — | — | — | — | doc | doc | doc | doc | doc | doc |
+| `/api/portable-export-policy` | GET | — | — | — | — | doc | doc | doc | doc | doc | doc |
 | `/api/cache/status?profile=` | GET | `cache query` (scopes) | Profile context | — | — | doc | doc | doc | exp | exp | exp |
+
+### `GET /api/server-config`
+
+Returns loaded **server** config only (logging, cache TTL threshold, copy binding timing) — not portable export rules.
+
+### `GET /api/portable-export-policy`
+
+Read-only JSON dump of built-in playbook, script, and integration include, exclude, and remap tables from code. See [`PORTABLE_EXPORT_FIELDS.md`](../../PORTABLE_EXPORT_FIELDS.md).
 
 ### `GET /api/settings`
 
@@ -215,6 +225,14 @@ Asset kinds: `layouts`, `classifiers`, `preprocess`, `incident-fields`, `inciden
 | `/api/object-setup/bundles?profile=` | GET, POST | — | Object Setup → saved bundles (per source tenant) | — (collections JSON) | — |
 | `/api/object-setup/bundles/{id}?profile=` | GET, DELETE | — | Load / delete bundle on source tenant | — | — |
 | `/api/object-setup/bundles/resolve` | POST | — | Apply bundle to copy UI | — | — |
+| `/api/bundles?profile=` | GET, POST | — | Bundles → saved presets (alias of object-setup storage) | — (collections JSON) | — |
+| `/api/bundles/{id}?profile=` | GET, DELETE | — | Load / delete saved preset | — | — |
+| `/api/bundles/resolve` | POST | — | Resolve basket members on source | — | — |
+| `/api/bundles/copy/preview` | POST | — | Bundles → copy to target (operation plan) | Multi-phase copy plan | — |
+| `/api/bundles/copy` | POST | — | Execute bundle copy | Lists, scripts, shallow playbooks, design orchestrator | — |
+| `/api/bundles/export/preview` | POST | — | Plan portable ZIP (sections, counts) | Resolve-only | — |
+| `/api/bundles/export` | POST | — | Download `application/zip` bundle export | Fetch all members; fail if missing | — |
+| `/api/bundles/playbook-dependencies` | POST | — | Scan scripts + sub-playbooks for playbooks in basket | Playbook analysis (cache) | — |
 
 Orchestrator order: incident-fields → layouts → incident-types → classifiers → preprocess (optional correlation rules via platform-admin).
 

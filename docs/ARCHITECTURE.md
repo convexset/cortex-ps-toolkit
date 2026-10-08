@@ -155,6 +155,8 @@ Toolkit API traffic uses a **thread-based dependency graph** (`cortex_ps_toolkit
 
 Credential profiles may override `cache_ttl_seconds`, `max_inflight_per_host`, and `max_inflight_global`. Global defaults live in `data/collections/settings.json` (or env vars `CORTEX_PS_*`).
 
+Portable playbook, script, and integration YAML field policy is **code-only** (see [`PORTABLE_EXPORT_FIELDS.md`](PORTABLE_EXPORT_FIELDS.md); introspection via `GET /api/portable-export-policy`).
+
 ### Cache refresh modes
 
 | Mode | When | Behaviour |

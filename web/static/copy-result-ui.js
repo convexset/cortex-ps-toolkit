@@ -217,6 +217,359 @@ function collectDeepCopyAlerts(data) {
   return alerts;
 }
 
+const BUNDLE_PHASE_LABELS = {
+  integrations: "Integration",
+  scripts: "Script",
+  playbooks: "Playbook",
+  lists: "List",
+  design: "Object setup",
+};
+
+function bundlePhaseResultRows(phaseKey, phaseResult) {
+  if (!phaseResult || typeof phaseResult !== "object") {
+    return [];
+  }
+  const label = BUNDLE_PHASE_LABELS[phaseKey] || phaseKey;
+  if (phaseKey === "design" && phaseResult.assets) {
+    const rows = [];
+    for (const [asset, assetResult] of Object.entries(phaseResult.assets)) {
+      const assetLabel = asset.replace(/-/g, " ");
+      for (const row of assetResult?.results || []) {
+        rows.push({ entityLabel: assetLabel, row });
+      }
+    }
+    return rows;
+  }
+  return (phaseResult.results || []).map((row) => ({ entityLabel: label, row }));
+}
+
+function collectBundleCopyAlerts(data) {
+  const alerts = [];
+  if (!data || typeof data !== "object") {
+    return alerts;
+  }
+  const telemLines = buildCopyRunTelemetryLines(data);
+  if (data.source_profile && data.target_profile) {
+    telemLines.unshift(`TELEM operation=${data.operation || "bundles.copy"}`);
+  }
+  if (telemLines.length) {
+    alerts.push({
+      severity: "info",
+      title: "Run telemetry",
+      detail: telemLines.join("\n"),
+    });
+  }
+  if (data.aborted) {
+    alerts.push({
+      severity: "error",
+      title: "Bundle copy aborted",
+      detail: data.reason || "No assets were copied.",
+    });
+    return alerts;
+  }
+
+  const phases = data.results || {};
+  for (const [phaseKey, phaseResult] of Object.entries(phases)) {
+    if (!phaseResult || typeof phaseResult !== "object") {
+      continue;
+    }
+    const phaseLabel = BUNDLE_PHASE_LABELS[phaseKey] || phaseKey;
+    if (phaseResult.aborted) {
+      alerts.push({
+        severity: "error",
+        title: `${phaseLabel} phase aborted`,
+        detail: phaseResult.reason || "See full JSON for details.",
+      });
+    }
+    if (phaseKey === "design" && phaseResult.halted && phaseResult.halt_reason) {
+      alerts.push({
+        severity: "warning",
+        title: "Object setup halted",
+        detail: String(phaseResult.halt_reason),
+      });
+    }
+    if (phaseKey === "playbooks") {
+      for (const binding of phaseResult.binding_table || []) {
+        const task = binding.task_id ? ` (task ${binding.task_id})` : "";
+        alerts.push({
+          severity: "warning",
+          title: `Unresolved binding: ${binding.playbook_name || binding.playbook_id || "?"}${task}`,
+          detail: binding.error || binding.kind || "Binding may fail at runtime until dependencies exist.",
+        });
+      }
+    }
+    const wrapped = bundlePhaseResultRows(phaseKey, phaseResult);
+    const byLabel = new Map();
+    for (const { entityLabel, row } of wrapped) {
+      if (!byLabel.has(entityLabel)) {
+        byLabel.set(entityLabel, []);
+      }
+      byLabel.get(entityLabel).push(row);
+    }
+    for (const [entityLabel, rows] of byLabel) {
+      for (const row of rows) {
+        if (row.status === "failed") {
+          alerts.push({
+            severity: "error",
+            title: `${entityLabel} failed: ${row.name || row.id || "?"}`,
+            detail: row.error || row.message || "See full JSON for details.",
+          });
+        }
+      }
+      alerts.push(...collectRowPostCopyDiffAlerts(rows, entityLabel));
+    }
+  }
+  return alerts;
+}
+
+/** Mirror design_content.copy_progress.copy_entry_succeeded (lists/scripts use string statuses). */
+function copyEntrySucceeded(entry) {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const status = entry.status;
+  const action = entry.action;
+  const skipActions = new Set([
+    "skip",
+    "skipped",
+    "missing",
+    "conflict",
+    "blocked_pack",
+    "blocked_non_copyable",
+    "incompatible",
+  ]);
+  const skipStatuses = new Set(["skipped", "conflict", "missing", "failed"]);
+  if (skipStatuses.has(status) || skipActions.has(action)) {
+    return false;
+  }
+  if (typeof status === "number") {
+    return status >= 200 && status < 300;
+  }
+  if (status === "copied" || status === "updated") {
+    return true;
+  }
+  if (action === "copy" || action === "update") {
+    return true;
+  }
+  return false;
+}
+
+function countCopyStatusRows(rows) {
+  const counts = { copied: 0, updated: 0, skipped: 0, failed: 0, other: 0 };
+  for (const row of rows || []) {
+    const status = row.status;
+    if (copyEntrySucceeded(row)) {
+      if (row.action === "update" || status === "updated") {
+        counts.updated += 1;
+      } else {
+        counts.copied += 1;
+      }
+      continue;
+    }
+    if (status === "skipped" || row.action === "skip") {
+      counts.skipped += 1;
+    } else if (status === "failed" || (typeof status === "number" && status >= 400)) {
+      counts.failed += 1;
+    } else if (status != null && status !== "") {
+      counts.other += 1;
+    }
+  }
+  return counts;
+}
+
+function formatBundlePhaseStatusLine(label, rows) {
+  if (!rows?.length) {
+    return null;
+  }
+  const counts = countCopyStatusRows(rows);
+  const saved = counts.copied + counts.updated;
+  const parts = [];
+  if (counts.copied) {
+    parts.push(`${counts.copied} copied`);
+  }
+  if (counts.updated) {
+    parts.push(`${counts.updated} updated`);
+  }
+  if (counts.skipped) {
+    parts.push(`${counts.skipped} skipped`);
+  }
+  if (counts.failed) {
+    parts.push(`${counts.failed} failed`);
+  }
+  const detail = parts.length ? parts.join(", ") : `${rows.length} item(s)`;
+  return `${label}: ${saved}/${rows.length} saved (${detail})`;
+}
+
+function renderBundleCopyResultSummary(host, data) {
+  if (!host || !data) {
+    return;
+  }
+  const lines = [];
+  if (typeof buildCopyRunTelemetryLines === "function") {
+    const telem = buildCopyRunTelemetryLines(data);
+    if (telem.length) {
+      lines.push(...telem, "");
+    }
+  }
+  host.classList.remove("copy-result-summary-issues");
+  if (data.aborted) {
+    lines.push(`Bundle copy aborted: ${data.reason || "no assets copied"}`);
+    host.textContent = lines.join("\n");
+    host.classList.add("copy-result-summary-issues");
+    host.classList.remove("hidden");
+    return;
+  }
+
+  const phases = data.results || {};
+  const phaseOrder = ["integrations", "scripts", "playbooks", "lists", "design"];
+  for (const phaseKey of phaseOrder) {
+    const phaseResult = phases[phaseKey];
+    if (!phaseResult) {
+      continue;
+    }
+    if (phaseKey === "design") {
+      if (phaseResult.assets) {
+        for (const [asset, assetResult] of Object.entries(phaseResult.assets)) {
+          const label = asset.replace(/-/g, " ");
+          const line = formatBundlePhaseStatusLine(label, assetResult?.results);
+          if (line) {
+            lines.push(line);
+          }
+        }
+      }
+      if (phaseResult.halted) {
+        lines.push(`Object setup: halted — ${phaseResult.halt_reason || "see JSON"}`);
+      } else if (phaseResult.executed === false && phaseResult.halt_reason) {
+        lines.push(`Object setup: ${phaseResult.halt_reason}`);
+      }
+      continue;
+    }
+    const label = BUNDLE_PHASE_LABELS[phaseKey] || phaseKey;
+    const line = formatBundlePhaseStatusLine(label, phaseResult.results);
+    if (line) {
+      lines.push(line);
+    }
+    if (phaseKey === "playbooks") {
+      const bindings = phaseResult.binding_table || [];
+      if (bindings.length) {
+        lines.push(`Playbook bindings: ${bindings.length} unresolved (see alerts)`);
+      } else if ((phaseResult.results || []).length) {
+        lines.push("Playbook bindings: no unresolved bindings in shallow plan.");
+      }
+    }
+    if (phaseResult.post_copy_diff_summary && typeof appendPostCopyDiffSummaryLines === "function") {
+      appendPostCopyDiffSummaryLines(lines, phaseResult.results, label);
+    }
+  }
+
+  const hasFailures =
+    typeof collectBundleCopyAlerts === "function" &&
+    collectBundleCopyAlerts(data).some((alert) => alert.severity === "error");
+  const hasWarnings =
+    typeof collectBundleCopyAlerts === "function" &&
+    collectBundleCopyAlerts(data).some((alert) => alert.severity === "warning");
+  host.textContent = lines.join("\n");
+  if (hasFailures || hasWarnings) {
+    host.classList.add("copy-result-summary-issues");
+  }
+  host.classList.remove("hidden");
+}
+
+function summarizeBundleCopyResult(data) {
+  const alerts = typeof collectBundleCopyAlerts === "function" ? collectBundleCopyAlerts(data) : [];
+  if (data.aborted) {
+    return {
+      success: false,
+      title: "Bundle copy aborted",
+      message: data.reason || "No assets were copied.",
+      alerts,
+    };
+  }
+  const phases = data.results || {};
+  let failed = 0;
+  let saved = 0;
+  const parts = [];
+  for (const [phaseKey, phaseResult] of Object.entries(phases)) {
+    if (!phaseResult || typeof phaseResult !== "object") {
+      continue;
+    }
+    if (phaseResult.aborted) {
+      failed += 1;
+      parts.push(`${BUNDLE_PHASE_LABELS[phaseKey] || phaseKey} aborted`);
+      continue;
+    }
+    const rows = bundlePhaseResultRows(phaseKey, phaseResult).map((entry) => entry.row);
+    const counts = countCopyStatusRows(rows);
+    failed += counts.failed;
+    saved += counts.copied + counts.updated;
+    if (rows.length) {
+      parts.push(`${BUNDLE_PHASE_LABELS[phaseKey] || phaseKey}: ${counts.copied + counts.updated}/${rows.length}`);
+    }
+    if (phaseKey === "design" && phaseResult.halted) {
+      failed += 1;
+      parts.push("object setup halted");
+    }
+  }
+  let message = parts.length ? parts.join("; ") + "." : "Bundle copy finished.";
+  if (data.post_copy_diff) {
+    message += " Post-copy diff enabled for scripts, playbooks, and lists.";
+  }
+  if (typeof buildCopyRunTelemetryLines === "function") {
+    const telem = buildCopyRunTelemetryLines(data);
+    if (telem.length) {
+      message = `${telem.join("\n")}\n\n${message}`;
+    }
+  }
+  const uploadFailed = failed > 0;
+  let title = "Bundle copy complete";
+  if (uploadFailed) {
+    title = "Bundle copy completed with errors";
+  } else if (alerts.some((row) => row.severity === "warning")) {
+    title = "Bundle copy complete (review warnings)";
+  }
+  return {
+    success: !uploadFailed,
+    title,
+    message,
+    alerts,
+  };
+}
+
+function presentBundleCopyResultView(container, data) {
+  if (!container) {
+    return [];
+  }
+  container.classList.remove("hidden");
+  const alertsHost = container.querySelector(".copy-result-alerts") || container.querySelector("#bundles-copy-alerts");
+  const summaryHost =
+    container.querySelector(".analysis-copy-result-summary") ||
+    container.querySelector("#bundles-copy-result-summary");
+  const rawDetails = container.querySelector("details.copy-result-raw");
+  const pre =
+    container.querySelector("#bundles-action-result") ||
+    container.querySelector(".analysis-copy-components-result");
+
+  const alerts = collectBundleCopyAlerts(data);
+  renderCopyAlertsHost(alertsHost, alerts);
+  if (summaryHost) {
+    renderBundleCopyResultSummary(summaryHost, data);
+  }
+  if (pre) {
+    pre.textContent = JSON.stringify(data, null, 2);
+    pre.classList.remove("hidden");
+  }
+  if (rawDetails) {
+    rawDetails.open = alerts.some((row) => row.severity === "error" || row.severity === "warning");
+  }
+  if (typeof ensureCopyDiffPanelButton === "function") {
+    ensureCopyDiffPanelButton(container, data);
+  }
+  if (alerts.length) {
+    (alertsHost || container).scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  return alerts;
+}
+
 function collectBulkCopyAlerts(data, itemLabel = "Item") {
   const alerts = [];
   if (!data || typeof data !== "object") {
@@ -392,9 +745,6 @@ function presentCopyResultView({ resultEl, blockEl, alertsEl, rawDetailsEl, data
   if (typeof ensureCopyDiffPanelButton === "function") {
     ensureCopyDiffPanelButton(block || alertsHost?.parentElement, data);
   }
-  if (typeof ensureCopyDiffPanelButton === "function") {
-    ensureCopyDiffPanelButton(block || alertsHost?.parentElement, data);
-  }
   if (alerts.length) {
     (alertsHost || block)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -426,9 +776,6 @@ function presentDeepCopyResultView(container, data) {
   if (typeof ensureCopyDiffPanelButton === "function") {
     ensureCopyDiffPanelButton(container, data);
   }
-  if (typeof ensureCopyDiffPanelButton === "function") {
-    ensureCopyDiffPanelButton(container, data);
-  }
   if (alerts.length) {
     (alertsHost || container).scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -440,7 +787,11 @@ window.formatPostCopyDiffTelemetry = formatPostCopyDiffTelemetry;
 window.describePostCopyDiffDetail = describePostCopyDiffDetail;
 window.buildCopyRunTelemetryLines = buildCopyRunTelemetryLines;
 window.collectDeepCopyAlerts = collectDeepCopyAlerts;
+window.collectBundleCopyAlerts = collectBundleCopyAlerts;
 window.collectBulkCopyAlerts = collectBulkCopyAlerts;
+window.renderBundleCopyResultSummary = renderBundleCopyResultSummary;
+window.summarizeBundleCopyResult = summarizeBundleCopyResult;
 window.renderCopyAlertsHtml = renderCopyAlertsHtml;
 window.presentCopyResultView = presentCopyResultView;
 window.presentDeepCopyResultView = presentDeepCopyResultView;
+window.presentBundleCopyResultView = presentBundleCopyResultView;

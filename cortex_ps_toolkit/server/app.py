@@ -53,7 +53,13 @@ from . import design_content_api
 from . import bundles_api, object_setup_bundles_api
 from . import platform_admin_api
 from . import vault_api
-from .cache_api import api_cache_status, api_settings_get, api_settings_patch
+from .cache_api import (
+    api_cache_status,
+    api_portable_export_policy_get,
+    api_server_config_get,
+    api_settings_get,
+    api_settings_patch,
+)
 from .xql_api import (
     api_xql_builtin_presets,
     api_xql_user_presets,
@@ -796,6 +802,13 @@ def create_app() -> Starlette:
         Route("/api/bundles/resolve", bundles_api.api_bundles_resolve, methods=["POST"]),
         Route("/api/bundles/copy/preview", bundles_api.api_bundles_copy_preview, methods=["POST"]),
         Route("/api/bundles/copy", bundles_api.api_bundles_copy, methods=["POST"]),
+        Route("/api/bundles/export/preview", bundles_api.api_bundles_export_preview, methods=["POST"]),
+        Route("/api/bundles/export", bundles_api.api_bundles_export, methods=["POST"]),
+        Route(
+            "/api/bundles/playbook-dependencies",
+            bundles_api.api_bundles_playbook_dependencies,
+            methods=["POST"],
+        ),
         Route("/api/bundles/{bundle_id}", bundles_api.api_bundles_get, methods=["GET"]),
         Route("/api/bundles/{bundle_id}", bundles_api.api_bundles_delete, methods=["DELETE"]),
         Route(
@@ -895,6 +908,8 @@ def create_app() -> Starlette:
         Route("/api/cache/status", api_cache_status, methods=["GET"]),
         Route("/api/settings", api_settings_get, methods=["GET"]),
         Route("/api/settings", api_settings_patch, methods=["PATCH"]),
+        Route("/api/server-config", api_server_config_get, methods=["GET"]),
+        Route("/api/portable-export-policy", api_portable_export_policy_get, methods=["GET"]),
         WebSocketRoute("/ws", websocket_endpoint),
     ]
     if static_dir.is_dir():

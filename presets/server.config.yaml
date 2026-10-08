@@ -1,5 +1,9 @@
 # Cortex PS Toolkit server configuration.
 # Copy to data/server.config.yaml or set CORTEX_PS_SERVER_CONFIG to this path.
+# Generate: python -m cortex_ps_toolkit server-config write-default
+#
+# Playbook/script portable export rules (include, exclude, remaps) are defined in
+# code only — see docs/PORTABLE_EXPORT_FIELDS.md
 
 # Screen logging level: DEBUG | INFO | WARN | ERROR
 server_log_level: DEBUG

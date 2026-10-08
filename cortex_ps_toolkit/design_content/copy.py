@@ -23,6 +23,7 @@ from .bundle import (
     write_preprocess_direct,
 )
 from .cache import list_cached, load_body
+from ..content.overwrite_retry import execute_overwrite_write
 from ..content.post_copy_diff import (
     COMPARE_MODE,
     POST_COPY_DIFF_PROBE_ID,
@@ -294,11 +295,29 @@ def copy_assets_to_tenant(
                     target.slug,
                 )
                 _progress({"phase": "step", "step": "write", "target_id": entry.get("target_id")})
-                if asset == "incident-fields":
-                    _, status = api.write_incident_field(target, write_doc)
-                else:
-                    _, status = api.write_incident_type(target, write_doc)
+                target_id = str(entry["target_id"])
+                action = str(entry.get("action") or "copy")
+
+                def _do_write() -> tuple[Any, int]:
+                    if asset == "incident-fields":
+                        return api.write_incident_field(target, write_doc)
+                    return api.write_incident_type(target, write_doc)
+
+                def _do_delete() -> None:
+                    if asset == "incident-fields":
+                        api.delete_incident_field(target, target_id)
+                    else:
+                        api.delete_incident_type(target, target_id)
+
+                (_body, status), overwrite_meta = execute_overwrite_write(
+                    action=action,
+                    write=_do_write,
+                    delete=_do_delete,
+                    on_retry=lambda event: _progress({**event, "step": "overwrite_retry"}),
+                )
                 result_entry = {**entry, "status": status, "channel": "direct"}
+                if overwrite_meta:
+                    result_entry["overwrite_retry"] = overwrite_meta
                 results.append(result_entry)
                 notify_item_copied(on_progress, asset, result_entry)
         else:

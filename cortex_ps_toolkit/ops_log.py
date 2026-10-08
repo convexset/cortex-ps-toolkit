@@ -174,10 +174,42 @@ def op_debug(message: str, *args: object) -> None:
     _emit("debug", text)
 
 
-def op_warn(message: str, *args: object, persistent: bool = False) -> None:
+def op_warn(
+    message: str,
+    *args: object,
+    persistent: bool = False,
+    auto_dismiss_ms: int = 8000,
+    notify: bool = True,
+) -> None:
     text = message % args if args else message
     LOGGER.warning(text)
-    _emit("warning", text, persistent=persistent)
+    if not notify:
+        publish_log_only("warning", text)
+        return
+    _emit_warning(text, persistent=persistent, auto_dismiss_ms=auto_dismiss_ms)
+
+
+def publish_log_only(level: str, text: str) -> None:
+    try:
+        from .server.events import publish_log
+
+        publish_log(level, text)
+    except Exception:
+        pass
+
+
+def _emit_warning(text: str, *, persistent: bool, auto_dismiss_ms: int) -> None:
+    try:
+        from .server.events import publish_log, publish_notification
+
+        publish_log("warning", text)
+        publish_notification(
+            text,
+            level="warning",
+            auto_dismiss_ms=0 if persistent else auto_dismiss_ms,
+        )
+    except Exception:
+        pass
 
 
 def op_error(

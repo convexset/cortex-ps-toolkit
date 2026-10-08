@@ -55,7 +55,9 @@ def _load_file(path: Path) -> dict[str, Any]:
 
 def _normalize_config(raw: Mapping[str, Any]) -> dict[str, Any]:
     merged: MutableMapping[str, Any] = dict(DEFAULT_SERVER_CONFIG)
-    merged.update(raw)
+    for key in DEFAULT_SERVER_CONFIG:
+        if key in raw:
+            merged[key] = raw[key]
 
     level = str(merged.get("server_log_level") or "INFO").strip().upper()
     if level == "WARNING":
@@ -150,6 +152,44 @@ def copy_binding_retry_pause_seconds(attempt: int) -> float:
     except (TypeError, ValueError):
         base = 5.0
     return max(0.0, base * (max(0, attempt) + 1))
+
+
+def default_server_config_document() -> dict[str, Any]:
+    """Default server config (logging, cache threshold, copy binding timing only)."""
+    return dict(DEFAULT_SERVER_CONFIG)
+
+
+def format_default_server_config_yaml() -> str:
+    """Serialize default server config for ``data/server.config.yaml``."""
+    header = (
+        "# Cortex PS Toolkit server configuration.\n"
+        "# Copy to data/server.config.yaml or set CORTEX_PS_SERVER_CONFIG to this path.\n"
+        "# Generate: python -m cortex_ps_toolkit server-config write-default\n"
+        "# Portable export field rules are code-only — see docs/PORTABLE_EXPORT_FIELDS.md\n"
+        "\n"
+    )
+    body = yaml.safe_dump(
+        default_server_config_document(),
+        sort_keys=False,
+        default_flow_style=False,
+        allow_unicode=True,
+    )
+    return header + body
+
+
+def write_default_server_config(
+    path: Path | None = None,
+    *,
+    force: bool = False,
+) -> Path:
+    """Write default server config YAML (refuses to overwrite unless ``force``)."""
+    target = path if path is not None else data_dir() / "server.config.yaml"
+    target = target.expanduser().resolve()
+    if target.is_file() and not force:
+        raise FileExistsError(f"Server config already exists: {target} (use --force to replace)")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(format_default_server_config_yaml(), encoding="utf-8")
+    return target
 
 
 def copy_binding_resolve_retries() -> int:

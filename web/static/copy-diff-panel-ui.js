@@ -2,6 +2,66 @@
 
 const COPY_DIFF_VALUE_TRUNCATE = 160;
 
+function copyDiffRowFromEntry(row, namePrefix = "") {
+  const diff = row?.post_copy_diff;
+  if (!diff) {
+    return null;
+  }
+  const baseName =
+    row.name ||
+    row.target_name ||
+    row.list_id ||
+    row.playbook_id ||
+    row.script_id ||
+    row.id ||
+    "?";
+  return {
+    name: namePrefix ? `${namePrefix}: ${baseName}` : baseName,
+    status: row.status,
+    kind: diff.kind,
+    outcome: diff.outcome,
+    diff,
+  };
+}
+
+function extractCopyDiffRowsFromList(entries, namePrefix = "") {
+  const rows = [];
+  for (const row of entries || []) {
+    const mapped = copyDiffRowFromEntry(row, namePrefix);
+    if (mapped) {
+      rows.push(mapped);
+    }
+  }
+  return rows;
+}
+
+function extractCopyDiffRowsFromPhaseContainer(phaseResult, phaseLabel = "") {
+  if (!phaseResult || typeof phaseResult !== "object") {
+    return [];
+  }
+  const rows = [];
+  if (phaseResult.copy_diff_report?.rows?.length) {
+    for (const row of phaseResult.copy_diff_report.rows) {
+      rows.push({
+        name: phaseLabel ? `${phaseLabel}: ${row.name || "?"}` : row.name || "?",
+        status: row.status,
+        kind: row.kind || row.post_copy_diff?.kind,
+        outcome: row.outcome || row.post_copy_diff?.outcome,
+        diff: row.post_copy_diff || {},
+      });
+    }
+  }
+  rows.push(...extractCopyDiffRowsFromList(phaseResult.results, phaseLabel));
+  const assets = phaseResult.assets;
+  if (assets && typeof assets === "object") {
+    for (const [asset, assetResult] of Object.entries(assets)) {
+      const label = phaseLabel ? `${phaseLabel}/${asset}` : asset;
+      rows.push(...extractCopyDiffRowsFromPhaseContainer(assetResult, label));
+    }
+  }
+  return rows;
+}
+
 function extractCopyDiffRows(data) {
   if (!data || typeof data !== "object") {
     return [];
@@ -15,29 +75,46 @@ function extractCopyDiffRows(data) {
       diff: row.post_copy_diff || {},
     }));
   }
-  const rows = [];
-  for (const key of ["results", "script_results", "playbook_results"]) {
-    for (const row of data[key] || []) {
-      const diff = row.post_copy_diff;
-      if (!diff) {
-        continue;
-      }
-      rows.push({
-        name:
-          row.name ||
-          row.target_name ||
-          row.list_id ||
-          row.playbook_id ||
-          row.script_id ||
-          "?",
-        status: row.status,
-        kind: diff.kind,
-        outcome: diff.outcome,
-        diff,
-      });
+  const nestedPhases = data.results;
+  if (nestedPhases && typeof nestedPhases === "object" && !Array.isArray(nestedPhases)) {
+    const rows = [];
+    for (const [phase, phaseResult] of Object.entries(nestedPhases)) {
+      rows.push(...extractCopyDiffRowsFromPhaseContainer(phaseResult, phase));
+    }
+    if (rows.length) {
+      return rows;
     }
   }
+  const rows = [];
+  for (const key of ["results", "script_results", "playbook_results"]) {
+    rows.push(...extractCopyDiffRowsFromList(data[key]));
+  }
   return rows;
+}
+
+function copyResponseHasPostCopyDiff(data) {
+  if (!data || typeof data !== "object") {
+    return false;
+  }
+  if (data.post_copy_diff) {
+    return true;
+  }
+  const phases = data.results;
+  if (!phases || typeof phases !== "object" || Array.isArray(phases)) {
+    return false;
+  }
+  for (const phaseResult of Object.values(phases)) {
+    if (!phaseResult || typeof phaseResult !== "object") {
+      continue;
+    }
+    if (phaseResult.post_copy_diff || phaseResult.copy_diff_report?.rows?.length) {
+      return true;
+    }
+    if (extractCopyDiffRowsFromList(phaseResult.results).length) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function truncateCopyDiffValue(value, maxLen = COPY_DIFF_VALUE_TRUNCATE) {
@@ -203,7 +280,7 @@ function showCopyDiffPanel(data) {
 
 function ensureCopyDiffPanelButton(container, data) {
   const hasRows = extractCopyDiffRows(data).length > 0;
-  if (!container || (!data?.post_copy_diff && !hasRows)) {
+  if (!container || (!copyResponseHasPostCopyDiff(data) && !hasRows)) {
     return;
   }
   let bar = container.querySelector(".copy-diff-actions");

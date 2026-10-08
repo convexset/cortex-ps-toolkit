@@ -51,6 +51,14 @@ def copy_kwargs_from_body(body: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def integration_copy_plan_kwargs(opts: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy plan kwargs for integrations (no rename / copy_as_new)."""
+    return {
+        "overwrite": bool(opts.get("overwrite")),
+        "stop_on_conflict": bool(opts.get("stop_on_conflict")),
+    }
+
+
 def effective_upload_name(item: Mapping[str, Any], *, fallback: str) -> str:
     action = str(item.get("action") or "")
     if action == "copy_as_new":
