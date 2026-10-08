@@ -2,7 +2,7 @@
 
 Planning document for Cortex PS Toolkit web UI: unified operation flows, navigability, and extended copy/bundle capabilities. Complements [`UI_AND_SERVER.md`](UI_AND_SERVER.md), [`FEATURES.md`](FEATURES.md), [`CONTENT-CLI.md`](CONTENT-CLI.md).
 
-**Status:** plan only (not implemented). Last updated: 2026-10-08.
+**Status:** Phases 0–3 implemented (2026-10-08); Phase 4 polish ongoing.
 
 ---
 

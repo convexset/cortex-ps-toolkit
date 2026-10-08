@@ -28,6 +28,7 @@ from ..platforms import UnsupportedOperation
 from ..playbooks.cache import load_playbooks_index
 from ..playbooks.analysis import analyze_playbook
 from ..playbooks.copy import copy_playbooks_to_tenant, plan_playbooks_copy
+from ..playbooks.copy_shallow import copy_shallow_playbooks_to_tenant, plan_shallow_playbooks_copy
 from ..playbooks.copy_components import (
     copy_playbook_components_to_tenant,
     plan_playbook_components_copy,
@@ -49,7 +50,7 @@ from . import lists_api
 from . import scripts_api
 from . import refactor_api
 from . import design_content_api
-from . import object_setup_bundles_api
+from . import bundles_api, object_setup_bundles_api
 from . import platform_admin_api
 from . import vault_api
 from .cache_api import api_cache_status, api_settings_get, api_settings_patch
@@ -125,31 +126,31 @@ async def api_lists_refresh(request: Request) -> JSONResponse:
         return error_response(exc, status)
 
 
-def _parse_lists_copy_body(body: dict[str, Any]) -> tuple[str, str, list[str], bool, bool, bool]:
+def _parse_lists_copy_body(body: dict[str, Any]) -> tuple[str, str, list[str], dict[str, Any], bool]:
+    from ..content.copy_plan_params import copy_kwargs_from_body
+
     source = str(body.get("source_profile") or "")
     target = str(body.get("target_profile") or "")
     list_ids = [str(item) for item in (body.get("list_ids") or [])]
-    overwrite = bool(body.get("overwrite"))
-    stop_on_conflict = bool(body.get("stop_on_conflict"))
+    copy_kw = copy_kwargs_from_body(body)
     post_copy_diff = bool(body.get("post_copy_diff"))
-    if stop_on_conflict and overwrite:
+    if copy_kw["stop_on_conflict"] and copy_kw["overwrite"]:
         raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
     if not source or not target or not list_ids:
         raise ValueError("source_profile, target_profile, list_ids required")
-    return source, target, list_ids, overwrite, stop_on_conflict, post_copy_diff
+    return source, target, list_ids, copy_kw, post_copy_diff
 
 
 async def api_lists_copy_preview(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
-        source, target, list_ids, overwrite, stop_on_conflict, _post_copy_diff = _parse_lists_copy_body(body)
+        source, target, list_ids, copy_kw, _post_copy_diff = _parse_lists_copy_body(body)
         plan = await run_sync(
             plan_lists_copy,
             source,
             target,
             list_ids,
-            overwrite=overwrite,
-            stop_on_conflict=stop_on_conflict,
+            **copy_kw,
         )
         return JSONResponse(plan)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
@@ -194,7 +195,7 @@ async def api_lists_copy(request: Request) -> JSONResponse:
         from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
 
         body = await read_json(request)
-        source, target, list_ids, overwrite, stop_on_conflict, post_copy_diff = _parse_lists_copy_body(body)
+        source, target, list_ids, copy_kw, post_copy_diff = _parse_lists_copy_body(body)
         title = "Lists copy"
         on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
@@ -202,10 +203,9 @@ async def api_lists_copy(request: Request) -> JSONResponse:
             source,
             target,
             list_ids,
-            overwrite=overwrite,
-            stop_on_conflict=stop_on_conflict,
             post_copy_diff=post_copy_diff,
             on_progress=on_progress,
+            **copy_kw,
         )
         publish_standard_copy_outcome(result, title=title, source=source, target=target)
         return JSONResponse(result)
@@ -272,33 +272,98 @@ async def api_playbooks_analysis(request: Request) -> JSONResponse:
         return error_response(exc, status)
 
 
-def _parse_playbook_components_body(body: dict[str, Any]) -> tuple[str, str, str, bool, bool, bool]:
+def _parse_playbook_components_body(body: dict[str, Any]) -> tuple[str, str, str, dict[str, Any], bool]:
+    from ..content.copy_plan_params import copy_kwargs_from_body
+
     source = str(body.get("source_profile") or "")
     target = str(body.get("target_profile") or "")
     playbook_id = str(body.get("playbook_id") or "")
-    overwrite = bool(body.get("overwrite"))
-    stop_on_conflict = bool(body.get("stop_on_conflict"))
+    copy_kw = copy_kwargs_from_body(body)
     post_copy_diff = bool(body.get("post_copy_diff"))
-    if stop_on_conflict and overwrite:
+    if copy_kw["stop_on_conflict"] and copy_kw["overwrite"]:
         raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
     if not source or not target or not playbook_id:
         raise ValueError("source_profile, target_profile, playbook_id required")
-    return source, target, playbook_id, overwrite, stop_on_conflict, post_copy_diff
+    return source, target, playbook_id, copy_kw, post_copy_diff
 
 
 async def api_playbooks_copy_components_preview(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
-        source, target, playbook_id, overwrite, stop_on_conflict, _post_copy_diff = _parse_playbook_components_body(body)
+        source, target, playbook_id, copy_kw, _post_copy_diff = _parse_playbook_components_body(body)
         plan = await run_sync(
             plan_playbook_components_copy,
             source,
             target,
             playbook_id,
-            overwrite=overwrite,
-            stop_on_conflict=stop_on_conflict,
+            **copy_kw,
         )
         return JSONResponse(plan)
+    except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
+        status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
+        return error_response(exc, status)
+
+
+async def api_playbooks_copy_shallow_preview(request: Request) -> JSONResponse:
+    try:
+        body = await read_json(request)
+        from ..content.copy_plan_params import copy_kwargs_from_body
+
+        source = str(body.get("source_profile") or "")
+        target = str(body.get("target_profile") or "")
+        playbook_ids = [str(item) for item in (body.get("playbook_ids") or [])]
+        copy_kw = copy_kwargs_from_body(body)
+        wave_script_ids = [str(item) for item in (body.get("wave_script_ids") or [])]
+        wave_playbook_ids = [str(item) for item in (body.get("wave_playbook_ids") or [])]
+        if not source or not target or not playbook_ids:
+            raise ValueError("source_profile, target_profile, playbook_ids required")
+        plan = await run_sync(
+            plan_shallow_playbooks_copy,
+            source,
+            target,
+            playbook_ids,
+            wave_script_ids=wave_script_ids or None,
+            wave_playbook_ids=wave_playbook_ids or None,
+            **copy_kw,
+        )
+        return JSONResponse(plan)
+    except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
+        status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
+        return error_response(exc, status)
+
+
+async def api_playbooks_copy_shallow(request: Request) -> JSONResponse:
+    try:
+        from ..core.batch_copy_progress import chain_progress
+        from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
+
+        body = await read_json(request)
+        from ..content.copy_plan_params import copy_kwargs_from_body
+
+        source = str(body.get("source_profile") or "")
+        target = str(body.get("target_profile") or "")
+        playbook_ids = [str(item) for item in (body.get("playbook_ids") or [])]
+        copy_kw = copy_kwargs_from_body(body)
+        post_copy_diff = bool(body.get("post_copy_diff"))
+        wave_script_ids = [str(item) for item in (body.get("wave_script_ids") or [])]
+        wave_playbook_ids = [str(item) for item in (body.get("wave_playbook_ids") or [])]
+        if not source or not target or not playbook_ids:
+            raise ValueError("source_profile, target_profile, playbook_ids required")
+        title = "Shallow playbooks copy"
+        on_progress = chain_progress(http_staged_copy_progress(title))
+        result = await run_sync(
+            copy_shallow_playbooks_to_tenant,
+            source,
+            target,
+            playbook_ids,
+            post_copy_diff=post_copy_diff,
+            wave_script_ids=wave_script_ids or None,
+            wave_playbook_ids=wave_playbook_ids or None,
+            on_progress=on_progress,
+            **copy_kw,
+        )
+        publish_standard_copy_outcome(result, title=title, source=source, target=target)
+        return JSONResponse(result)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
         return error_response(exc, status)
@@ -307,7 +372,7 @@ async def api_playbooks_copy_components_preview(request: Request) -> JSONRespons
 async def api_playbooks_copy_components(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
-        source, target, playbook_id, overwrite, stop_on_conflict, post_copy_diff = _parse_playbook_components_body(body)
+        source, target, playbook_id, copy_kw, post_copy_diff = _parse_playbook_components_body(body)
         from .copy_notifications import publish_deep_copy_complete_notification
 
         def on_progress(event: dict[str, Any]) -> None:
@@ -328,10 +393,9 @@ async def api_playbooks_copy_components(request: Request) -> JSONResponse:
             source,
             target,
             playbook_id,
-            overwrite=overwrite,
-            stop_on_conflict=stop_on_conflict,
             post_copy_diff=post_copy_diff,
             on_progress=on_progress,
+            **copy_kw,
         )
         publish_deep_copy_complete_notification(result, source=source, target=target)
         return JSONResponse(result)
@@ -475,6 +539,16 @@ def create_app() -> Starlette:
         Route(
             "/api/playbooks/copy/preview",
             make_copy_preview_handler(plan_playbooks_copy, ids_key="playbook_ids"),
+            methods=["POST"],
+        ),
+        Route(
+            "/api/playbooks/copy-shallow/preview",
+            api_playbooks_copy_shallow_preview,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/playbooks/copy-shallow",
+            api_playbooks_copy_shallow,
             methods=["POST"],
         ),
         Route(
@@ -717,6 +791,13 @@ def create_app() -> Starlette:
             object_setup_bundles_api.api_object_setup_bundles_delete,
             methods=["DELETE"],
         ),
+        Route("/api/bundles", bundles_api.api_bundles_list, methods=["GET"]),
+        Route("/api/bundles", bundles_api.api_bundles_save, methods=["POST"]),
+        Route("/api/bundles/resolve", bundles_api.api_bundles_resolve, methods=["POST"]),
+        Route("/api/bundles/copy/preview", bundles_api.api_bundles_copy_preview, methods=["POST"]),
+        Route("/api/bundles/copy", bundles_api.api_bundles_copy, methods=["POST"]),
+        Route("/api/bundles/{bundle_id}", bundles_api.api_bundles_get, methods=["GET"]),
+        Route("/api/bundles/{bundle_id}", bundles_api.api_bundles_delete, methods=["DELETE"]),
         Route(
             "/api/platform-admin/{section}",
             platform_admin_api.api_platform_admin_list,

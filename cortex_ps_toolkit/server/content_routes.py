@@ -13,6 +13,7 @@ from ..credentials import get_profile
 from ..platforms import UnsupportedOperation
 from ..settings import cache_ttl_seconds
 from .common import error_response, read_json, run_sync
+from ..content.copy_plan_params import copy_kwargs_from_body
 from ..core.batch_copy_progress import chain_progress
 from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
 from .delete_notifications import publish_delete_success_notifications
@@ -78,9 +79,8 @@ def make_copy_preview_handler(
             source = str(body.get("source_profile") or "")
             target = str(body.get("target_profile") or "")
             item_ids = [str(item) for item in (body.get(ids_key) or [])]
-            overwrite = bool(body.get("overwrite"))
-            stop_on_conflict = bool(body.get("stop_on_conflict"))
-            if stop_on_conflict and overwrite:
+            copy_kw = copy_kwargs_from_body(body)
+            if copy_kw["stop_on_conflict"] and copy_kw["overwrite"]:
                 raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
             if not source or not target or not item_ids:
                 raise ValueError(f"source_profile, target_profile, {ids_key} required")
@@ -89,8 +89,7 @@ def make_copy_preview_handler(
                 source,
                 target,
                 item_ids,
-                overwrite=overwrite,
-                stop_on_conflict=stop_on_conflict,
+                **copy_kw,
             )
             return JSONResponse(plan)
         except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
@@ -113,9 +112,8 @@ def make_copy_handler(
             source = str(body.get("source_profile") or "")
             target = str(body.get("target_profile") or "")
             item_ids = [str(item) for item in (body.get(ids_key) or [])]
-            overwrite = bool(body.get("overwrite"))
-            stop_on_conflict = bool(body.get("stop_on_conflict"))
-            if stop_on_conflict and overwrite:
+            copy_kw = copy_kwargs_from_body(body)
+            if copy_kw["stop_on_conflict"] and copy_kw["overwrite"]:
                 raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
             if not source or not target or not item_ids:
                 raise ValueError(f"source_profile, target_profile, {ids_key} required")
@@ -126,9 +124,8 @@ def make_copy_handler(
                 source,
                 target,
                 item_ids,
-                overwrite=overwrite,
-                stop_on_conflict=stop_on_conflict,
                 on_progress=on_progress,
+                **copy_kw,
                 **extra_kwargs,
             )
             publish_standard_copy_outcome(

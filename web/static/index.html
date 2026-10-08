@@ -6,7 +6,7 @@
   <title>Cortex PS Toolkit</title>
   <link rel="icon" href="/static/logo.png" type="image/png" />
   <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator_midnight.min.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260922v" />
+  <link rel="stylesheet" href="/static/styles.css?v=20261008a" />
 </head>
 <body>
   <div class="app">
@@ -16,17 +16,18 @@
       </a>
       <div class="rail-primary">
         <button class="rail-btn" data-route="lists" title="List Tools">📝</button>
-        <button class="rail-btn" data-route="scripts" title="Script Tools">⚙</button>
+        <button class="rail-btn" data-route="scripts" title="Script Tools">⚙️</button>
         <button class="rail-btn" data-route="playbooks" title="Playbook Tools">▶️</button>
         <button class="rail-btn" data-route="integrations" title="Integrations">🔌</button>
-        <button class="rail-btn" data-route="object-setup" title="Object Setup">🧰</button>
+        <button class="rail-btn" data-route="object-setup" title="Object Setup">📚</button>
+        <button class="rail-btn" data-route="bundles" title="Bundles">💼</button>
         <button class="rail-btn" data-route="xql" title="XQL Query Tool">📊</button>
         <button class="rail-btn" data-route="indicators" title="Indicators (IOCs/BIOCs)">🎯</button>
         <button class="rail-btn" data-route="system-admin" title="User Administration">👥</button>
       </div>
       <div class="rail-footer">
         <button class="rail-btn" data-route="credentials" title="API Profiles">🔑</button>
-        <button class="rail-btn" data-route="settings" title="Settings">⚙</button>
+        <button class="rail-btn" data-route="settings" title="Settings">🔧</button>
       </div>
     </nav>
     <main class="main">
@@ -77,8 +78,13 @@
           </article>
           <article class="landing-card">
             <h3>Object Setup</h3>
-            <p>Incident fields, types, layouts, classifiers, and pre-process rules — refresh, copy, delete, and cross-tenant Object Bundle workflows.</p>
+            <p>Incident fields, types, layouts, classifiers, and pre-process rules — refresh, copy, and delete design-time assets.</p>
             <button type="button" class="secondary landing-card-link" data-route="object-setup">Open Object Setup</button>
+          </article>
+          <article class="landing-card">
+            <h3>Bundles</h3>
+            <p>Save and load solution bundles (lists, scripts, playbooks, design assets) and copy them to another tenant with a phased plan.</p>
+            <button type="button" class="secondary landing-card-link" data-route="bundles">Open Bundles</button>
           </article>
           <article class="landing-card">
             <h3>XQL Query Tool</h3>
@@ -155,6 +161,33 @@
         <p id="xql-profile-hint" class="meta panel-hint warn"></p>
         <iframe id="xql-frame" class="xql-frame" title="XQL Query Tool"></iframe>
       </div>
+      <div id="panel-bundles" class="panel hidden">
+        <div class="toolbar">
+          <span id="bundles-meta" class="meta">Collect lists, scripts, playbooks, and design assets; copy in dependency order.</span>
+        </div>
+        <p class="meta panel-hint">Add items from List, Script, Playbook, or Object Setup grids via “Add to bundle” (where available), or load a saved bundle.</p>
+        <div id="bundles-workflow-row" class="copy-row workflow-toolbar">
+          <button type="button" id="bundles-clear">Clear bundle</button>
+          <span id="bundles-workflow-summary" class="meta">Bundle empty</span>
+        </div>
+        <ul id="bundles-workflow-list" class="workflow-list hidden"></ul>
+        <div class="copy-row">
+          <label>Bundle name (save)
+            <input type="text" id="bundles-id" placeholder="e.g. phishing-workflow" autocomplete="off" />
+          </label>
+          <button type="button" id="bundles-save" class="secondary">Save bundle</button>
+          <label>Saved
+            <select id="bundles-preset"><option value="">— select —</option></select>
+          </label>
+          <button type="button" id="bundles-load" class="secondary">Load</button>
+          <button type="button" id="bundles-delete" class="secondary">Delete saved</button>
+        </div>
+        <div id="bundles-copy-row" class="copy-row">
+          <label>Target profile <select id="bundles-copy-target"></select></label>
+          <button type="button" id="bundles-copy" class="primary">Copy bundle to target</button>
+        </div>
+        <pre id="bundles-action-result" class="result hidden"></pre>
+      </div>
       <div id="panel-settings" class="panel hidden">
         <div class="toolbar">
           <button type="button" id="settings-save" class="primary">Save settings</button>
@@ -191,6 +224,7 @@
           <h2>Copy playbooks to other tenant</h2>
           <div class="selection-toolbar">
             <button type="button" id="playbooks-delete" class="danger">Delete selected</button>
+            <button type="button" id="playbooks-add-to-bundle">Add to bundle</button>
           </div>
           <div class="copy-row">
             <label>
@@ -209,6 +243,7 @@
               <input type="checkbox" id="playbooks-copy-post-diff" />
               Diff after copy (source vs target)
             </label>
+            <button type="button" id="playbooks-copy-shallow" class="secondary">Shallow copy selected</button>
             <button type="button" id="playbooks-copy" class="primary">Copy selected</button>
           </div>
           <div id="playbooks-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
@@ -255,6 +290,7 @@
             <button type="button" id="scripts-select-none">Select none</button>
             <button type="button" id="scripts-view">View selected</button>
             <button type="button" id="scripts-delete" class="danger">Delete selected</button>
+            <button type="button" id="scripts-add-to-bundle">Add to bundle</button>
             <span id="scripts-selection-count" class="meta">0 selected</span>
           </div>
           <div class="copy-row">
@@ -544,7 +580,7 @@
           <div class="workflow-section">
             <h3 class="workflow-heading">Object Bundle</h3>
             <p class="meta panel-hint admin-panel-note">Collect assets from any tab, then copy them together in dependency order. Only bundle items are copied — not the whole tenant.</p>
-            <div id="object-setup-workflow-row" class="copy-row workflow-toolbar">
+            <div id="object-setup-workflow-row" class="copy-row workflow-toolbar hidden" aria-hidden="true">
               <button type="button" id="object-setup-add-workflow">Add selection to bundle</button>
               <button type="button" id="object-setup-clear-workflow">Clear bundle</button>
               <span id="object-setup-workflow-summary" class="meta">Bundle empty</span>
@@ -566,7 +602,7 @@
               <button type="button" id="object-setup-delete-bundle" class="secondary">Delete saved</button>
             </div>
           </div>
-          <div id="object-setup-orchestrate-row" class="copy-row object-setup-bundle-copy-row">
+          <div id="object-setup-orchestrate-row" class="copy-row object-setup-bundle-copy-row hidden" aria-hidden="true">
             <label>Object Bundle Destination <select id="object-setup-orchestrate-target"></select></label>
             <label class="checkbox" title="Replace objects on the destination when the same name already exists">
               <input type="checkbox" id="object-setup-bundle-overwrite" /> Overwrite on destination
@@ -688,6 +724,7 @@
             <button type="button" id="lists-select-none">Select none</button>
             <button type="button" id="lists-view">View selected</button>
             <button type="button" id="lists-delete" class="danger">Delete selected</button>
+            <button type="button" id="lists-add-to-bundle">Add to bundle</button>
             <span id="lists-selection-count" class="meta">0 selected</span>
           </div>
           <div class="copy-row">
@@ -800,31 +837,33 @@
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js"></script>
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
-  <script src="/static/ws-client.js?v=20260922v"></script>
-  <script src="/static/dom-utils.js?v=20260922v"></script>
-  <script src="/static/panel-actions.js?v=20260922v"></script>
-  <script src="/static/copy-result-ui.js?v=20261007d"></script>
-  <script src="/static/copy-diff-panel-ui.js?v=20261007d"></script>
-  <script src="/static/cache-meta.js?v=20260922v"></script>
-  <script src="/static/stale-cache-ui.js?v=20260922v"></script>
-  <script src="/static/analysis-fetch-ui.js?v=20260922v"></script>
-  <script src="/static/profile-context.js?v=20260922v"></script>
-  <script src="/static/grid-search.js?v=20260922v"></script>
-  <script src="/static/tabulator-utils.js?v=20260922v"></script>
-  <script src="/static/operation-progress-ui.js?v=20260922v"></script>
-  <script src="/static/content-viewer-render.js?v=20260922v"></script>
-  <script src="/static/content-viewer-ui.js?v=20260922v"></script>
-  <script src="/static/content-tools-ui.js?v=20260922v"></script>
-  <script src="/static/refactor-graph-validation.js?v=20260922v"></script>
-  <script src="/static/playbooks-analysis-ui.js?v=20260922v"></script>
-  <script src="/static/settings-ui.js?v=20260922v"></script>
-  <script src="/static/xql-ui.js?v=20260922v"></script>
-  <script src="/static/credentials-ui.js?v=20260922v"></script>
-  <script src="/static/capabilities-ui.js?v=20260922v"></script>
-  <script src="/static/integrations-ui.js?v=20260922v"></script>
-  <script src="/static/object-setup-ui.js?v=20260922v"></script>
-  <script src="/static/indicators-ui.js?v=20260922v"></script>
-  <script src="/static/system-admin-ui.js?v=20260922v"></script>
-  <script src="/static/app.js?v=20260922v"></script>
+  <script src="/static/ws-client.js?v=20261008a"></script>
+  <script src="/static/dom-utils.js?v=20261008a"></script>
+  <script src="/static/panel-actions.js?v=20261008a"></script>
+  <script src="/static/copy-result-ui.js?v=20261008a"></script>
+  <script src="/static/copy-diff-panel-ui.js?v=20261008a"></script>
+  <script src="/static/operation-ui.js?v=20261008a"></script>
+  <script src="/static/cache-meta.js?v=20261008a"></script>
+  <script src="/static/stale-cache-ui.js?v=20261008a"></script>
+  <script src="/static/analysis-fetch-ui.js?v=20261008a"></script>
+  <script src="/static/profile-context.js?v=20261008a"></script>
+  <script src="/static/grid-search.js?v=20261008a"></script>
+  <script src="/static/tabulator-utils.js?v=20261008a"></script>
+  <script src="/static/operation-progress-ui.js?v=20261008a"></script>
+  <script src="/static/content-viewer-render.js?v=20261008a"></script>
+  <script src="/static/content-viewer-ui.js?v=20261008a"></script>
+  <script src="/static/content-tools-ui.js?v=20261008a"></script>
+  <script src="/static/refactor-graph-validation.js?v=20261008a"></script>
+  <script src="/static/playbooks-analysis-ui.js?v=20261008a"></script>
+  <script src="/static/settings-ui.js?v=20261008a"></script>
+  <script src="/static/xql-ui.js?v=20261008a"></script>
+  <script src="/static/credentials-ui.js?v=20261008a"></script>
+  <script src="/static/capabilities-ui.js?v=20261008a"></script>
+  <script src="/static/integrations-ui.js?v=20261008a"></script>
+  <script src="/static/object-setup-ui.js?v=20261008a"></script>
+  <script src="/static/bundles-ui.js?v=20261008a"></script>
+  <script src="/static/indicators-ui.js?v=20261008a"></script>
+  <script src="/static/system-admin-ui.js?v=20261008a"></script>
+  <script src="/static/app.js?v=20261008a"></script>
 </body>
 </html>

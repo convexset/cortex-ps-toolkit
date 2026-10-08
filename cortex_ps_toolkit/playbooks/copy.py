@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Callable, Literal, Mapping, Optional, Sequence
 
+from ..content.copy_modes import classify_copy_action
+from ..content.copy_plan_params import effective_upload_name, normalize_copy_kwargs
+from ..content.operation_plan import wrap_copy_plan
+
 from ..content.post_copy_diff import (
     aggregate_copy_diff_report,
     apply_post_copy_diffs,
@@ -55,7 +59,22 @@ def plan_playbooks_copy(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
 ) -> dict[str, Any]:
+    opts = normalize_copy_kwargs(
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        copy_mode=copy_mode,
+        rename_suffix=rename_suffix,
+        rename_map=rename_map,
+    )
+    mode = opts["copy_mode"]
+    overwrite = opts["overwrite"]
+    stop_on_conflict = opts["stop_on_conflict"]
+    rename_suffix = opts["rename_suffix"]
+    rename_map = opts["rename_map"]
     source = get_profile(source_profile)
     target = get_profile(target_profile)
     assert_operation_supported("playbooks.copy", source.tenant_type)
@@ -70,15 +89,22 @@ def plan_playbooks_copy(
         entry = resolve_playbook_meta(source, playbook_id)
         name = str(entry.get("name") or playbook_id)
         existing = find_playbook_in_index(target, name=name)
-        action = _classify_copy_action(
+        action, extra = classify_copy_action(
             existing=existing,
-            overwrite=overwrite,
+            mode=mode,
+            source_name=name,
+            rename_suffix=rename_suffix,
+            rename_map=rename_map,
+            item_key=playbook_id,
+            name_exists=lambda n: find_playbook_in_index(target, name=n),
             stop_on_conflict=stop_on_conflict,
         )
         item = {
             "playbook_id": playbook_id,
+            "id": playbook_id,
             "name": name,
             "action": action,
+            **extra,
         }
         if existing:
             item["target_id"] = existing.get("id")
@@ -88,23 +114,29 @@ def plan_playbooks_copy(
 
     counts = {
         "total": len(items),
-        "copy": sum(1 for item in items if item["action"] == "copy"),
+        "copy": sum(1 for item in items if item["action"] in ("copy", "copy_as_new")),
         "update": sum(1 for item in items if item["action"] == "update"),
         "skip": sum(1 for item in items if item["action"] == "skip"),
         "conflict": len(conflicts),
+        "copy_as_new": sum(1 for item in items if item["action"] == "copy_as_new"),
     }
-    would_abort = stop_on_conflict and bool(conflicts)
+    would_abort = (stop_on_conflict and bool(conflicts)) or (
+        mode == "copy_as_new" and bool(conflicts)
+    )
 
-    return {
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "overwrite": overwrite,
         "stop_on_conflict": stop_on_conflict,
+        "copy_mode": mode,
+        "rename_suffix": rename_suffix,
         "items": items,
         "counts": counts,
         "would_abort": would_abort,
         "conflicts": conflicts,
     }
+    return wrap_copy_plan(legacy, operation="playbooks.copy", mode=mode, rename_suffix=rename_suffix)
 
 
 def copy_playbooks_to_tenant(
@@ -114,6 +146,9 @@ def copy_playbooks_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
     post_copy_diff: bool = False,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
@@ -139,6 +174,9 @@ def copy_playbooks_to_tenant(
             playbook_ids,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            copy_mode=copy_mode,
+            rename_suffix=rename_suffix,
+            rename_map=rename_map,
         )
         progress.complete_stage()
         if plan["would_abort"]:
@@ -171,6 +209,8 @@ def copy_playbooks_to_tenant(
                     "reason": f"Playbook {name!r} already exists on {target.slug}",
                 })
                 continue
+            if action == "copy_as_new":
+                name = effective_upload_name(item, fallback=name)
             if action == "conflict":
                 results.append({
                     "playbook_id": playbook_id,

@@ -11,6 +11,7 @@ function initContentTools(spec) {
     selectNoneBtnId,
     deleteBtnId,
     copyBtnId,
+    shallowCopyBtnId = null,
     selectionCountId,
     copyTargetId,
     copyOverwriteId,
@@ -158,23 +159,29 @@ function initContentTools(spec) {
     }
   }
 
+  const copyModePrefix = resource === "playbooks" ? "playbooks" : resource;
+
   function copyOptionsPayload(source, target, itemIds) {
     const payload = {
       source_profile: source,
       target_profile: target,
       [idsKey]: itemIds,
-      overwrite: document.getElementById(copyOverwriteId).checked,
-      stop_on_conflict: document.getElementById(copyStopId).checked,
     };
     if (copyPostDiffId) {
       payload.post_copy_diff = document.getElementById(copyPostDiffId)?.checked ?? false;
     }
+    if (typeof mergeCopyPayload === "function") {
+      return mergeCopyPayload(payload, copyModePrefix);
+    }
+    payload.overwrite = document.getElementById(copyOverwriteId).checked;
+    payload.stop_on_conflict = document.getElementById(copyStopId).checked;
     return payload;
   }
 
   function planWouldTakeNoAction(plan) {
     if (plan.would_abort) return true;
-    return plan.counts.copy === 0 && plan.counts.update === 0;
+    const counts = plan.summary || plan.counts || {};
+    return (counts.create ?? counts.copy ?? 0) === 0 && (counts.update ?? 0) === 0;
   }
 
   function formatCopySummary(plan) {
@@ -366,6 +373,75 @@ function initContentTools(spec) {
     }
   }
 
+  async function copyShallowSelected(triggerButton = null) {
+    if (resource !== "playbooks") return;
+    const source = activeProfile();
+    const target = document.getElementById(copyTargetId).value;
+    const selected = getSelectedRows();
+    if (!selected.length) {
+      alert("Select one or more playbooks for shallow copy.");
+      return;
+    }
+    if (source === target) {
+      alert("Choose a different target profile.");
+      return;
+    }
+    const playbookIds = selected.map((row) => row.id);
+    const payload = copyOptionsPayload(source, target, playbookIds);
+    const resultEl = document.getElementById(copyResultId);
+    try {
+      const plan = await withLoader(
+        () =>
+          api("/api/playbooks/copy-shallow/preview", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }),
+        "Checking shallow copy plan…",
+      );
+      if (planWouldTakeNoAction(plan)) {
+        alert("No shallow copy actions in plan.");
+        return;
+      }
+      const proceedCopy =
+        typeof confirmOperation === "function"
+          ? await confirmOperation({ title: "Confirm shallow copy", plan, proceedLabel: "Shallow copy", itemLabel })
+          : window.confirm("Proceed with shallow copy?");
+      if (!proceedCopy) return;
+      const copyProgress = createOperationProgress("Shallow copy playbooks");
+      const data = await copyProgress.runCopy({
+        startMessage: `Shallow copying ${playbookIds.length} playbook(s)…`,
+        wsAction: "playbooks.copy_shallow",
+        payload,
+        httpCall: () =>
+          api("/api/playbooks/copy-shallow", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }),
+        loaderMessage: "Shallow copying…",
+        busyButton: triggerButton,
+        busyLabel: "Copying…",
+      });
+      if (typeof presentCopyResultView === "function") {
+        const blockId = copyResultId.replace(/-result$/, "-result-block");
+        const alertsId = copyResultId.replace(/-result$/, "-alerts");
+        presentCopyResultView({
+          resultEl,
+          blockEl: document.getElementById(blockId),
+          alertsEl: document.getElementById(alertsId),
+          data,
+          collectAlerts: collectBulkCopyAlerts,
+          itemLabel,
+        });
+      }
+    } catch (err) {
+      if (typeof showOutcomeDialog === "function") {
+        showOutcomeDialog({ title: "Shallow copy failed", message: err.message, success: false });
+      } else {
+        alert(`Shallow copy failed: ${err.message}`);
+      }
+    }
+  }
+
   async function copySelected(triggerButton = null) {
     const source = activeProfile();
     const target = document.getElementById(copyTargetId).value;
@@ -394,18 +470,20 @@ function initContentTools(spec) {
       );
 
       if (planWouldTakeNoAction(plan)) {
-        alert(formatCopySummary(plan));
+        alert(typeof renderOperationPlan === "function" ? "No copy actions in plan." : formatCopySummary(plan));
         return;
       }
 
       const proceedCopy =
-        typeof showConfirmDialog === "function"
-          ? await showConfirmDialog({
-              title: "Confirm copy",
-              message: formatCopySummary(plan),
-              proceedLabel: "Copy",
-            })
-          : window.confirm(formatCopySummary(plan));
+        typeof confirmOperation === "function"
+          ? await confirmOperation({ title: "Confirm copy", plan, proceedLabel: "Copy", itemLabel })
+          : typeof showConfirmDialog === "function"
+            ? await showConfirmDialog({
+                title: "Confirm copy",
+                message: formatCopySummary(plan),
+                proceedLabel: "Copy",
+              })
+            : window.confirm(formatCopySummary(plan));
       if (!proceedCopy) return;
 
       const copyProgress = createOperationProgress(`Copy ${resource}`);
@@ -487,7 +565,35 @@ function initContentTools(spec) {
     document.getElementById(copyBtnId).addEventListener("click", (event) => {
       copySelected(event.currentTarget);
     });
+    if (shallowCopyBtnId) {
+      document.getElementById(shallowCopyBtnId)?.addEventListener("click", (event) => {
+        void copyShallowSelected(event.currentTarget);
+      });
+    }
+    const copyRow = document.getElementById(copyBtnId)?.closest(".copy-row");
+    if (copyRow && typeof appendCopyModeControls === "function") {
+      appendCopyModeControls(copyRow, copyModePrefix);
+    }
     document.getElementById(deleteBtnId).addEventListener("click", deleteSelected);
+    const addBundleBtnId = `${resource}-add-to-bundle`;
+    if (document.getElementById(addBundleBtnId)) {
+      document.getElementById(addBundleBtnId).addEventListener("click", () => {
+        const rows = getSelectedRows();
+        if (!rows.length) {
+          alert(`Select ${itemLabel}(s) to add to bundle.`);
+          return;
+        }
+        const asset = resource === "playbooks" ? "playbooks" : resource === "scripts" ? "scripts" : resource;
+        let added = 0;
+        for (const row of rows) {
+          if (typeof cptkAddToBundle === "function" && cptkAddToBundle(asset, row)) added += 1;
+        }
+        if (!added) alert("Selected items are already in the bundle.");
+        else if (typeof showActionSuccess === "function") {
+          showActionSuccess(`Added ${added} item(s). Open Bundles to review or copy.`, { title: "Bundle updated" });
+        }
+      });
+    }
     if (viewBtnId) {
       document.getElementById(viewBtnId)?.addEventListener("click", () => {
         void viewSelectedRow();

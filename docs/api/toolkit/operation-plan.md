@@ -1,0 +1,42 @@
+# Operation plan schema (`plan_version: 1`)
+
+Preview endpoints for copy operations return a versioned plan envelope so the web UI can render a consistent confirm dialog.
+
+## Top-level fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `plan_version` | `1` | Schema version |
+| `operation` | string | e.g. `lists.copy`, `playbooks.copy_shallow`, `playbooks.copy_components` |
+| `copy_mode` | `skip` \| `overwrite` \| `copy_as_new` | Effective mode |
+| `mode_description` | string | Human-readable outcome description for selected options |
+| `source_profile` / `target_profile` | string | Tenant slugs |
+| `summary` | object | `total`, `create`, `update`, `skip`, `abort` |
+| `steps` | array | Ordered phases shown in confirm UI |
+| `items` | array | Per-asset rows (`action`, `name`, optional `proposed_name`, …) |
+| `risks` | array | `{ code, severity, message }` — high severity requires ack in UI |
+| `warnings` | array | Non-blocking `{ code, message }` |
+| `would_abort` | bool | Execute would refuse without plan change |
+| `binding_table` | array | Shallow playbook copy: unresolved task bindings |
+
+Legacy fields (`counts`, `conflicts`, `overwrite`, nested `scripts` / `playbooks` on deep copy) remain during transition.
+
+## Copy mode API
+
+Request body (all copy preview/execute routes):
+
+| Field | Description |
+| --- | --- |
+| `copy_mode` | Optional: `skip`, `overwrite`, `copy_as_new` |
+| `overwrite` / `stop_on_conflict` | Legacy booleans; ignored when `copy_mode` set |
+| `rename_suffix` | Applied to selected items in `copy_as_new` mode (default `_copy`) |
+| `rename_map` | Optional `{ source_id: new_name }` overrides |
+
+## Endpoints emitting `plan_version: 1`
+
+- `POST /api/lists/copy/preview`
+- `POST /api/scripts/copy/preview`
+- `POST /api/playbooks/copy/preview`
+- `POST /api/playbooks/copy-shallow/preview`
+- `POST /api/playbooks/copy-components/preview`
+- `POST /api/bundles/copy/preview`

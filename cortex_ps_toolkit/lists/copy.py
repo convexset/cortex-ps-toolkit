@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Callable, Literal, Mapping, Optional, Sequence
 
+from ..content.copy_modes import classify_copy_action
+from ..content.copy_plan_params import effective_upload_name, normalize_copy_kwargs
+from ..content.operation_plan import wrap_copy_plan
+
 from ..core.batch_copy_progress import emit_copy_item_step, make_batch_copy_progress
 from ..credentials import CredentialProfile, get_profile
 from ..ops_log import op_action, op_info
@@ -88,8 +92,24 @@ def plan_lists_copy(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
 ) -> dict[str, Any]:
     """Preview a copy operation after refreshing the target cache."""
+    opts = normalize_copy_kwargs(
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        copy_mode=copy_mode,
+        rename_suffix=rename_suffix,
+        rename_map=rename_map,
+    )
+    mode = opts["copy_mode"]
+    overwrite = opts["overwrite"]
+    stop_on_conflict = opts["stop_on_conflict"]
+    rename_suffix = opts["rename_suffix"]
+    rename_map = opts["rename_map"]
+
     source = get_profile(source_profile)
     target = get_profile(target_profile)
     assert_operation_supported("content.lists.manage", source.tenant_type)
@@ -104,15 +124,22 @@ def plan_lists_copy(
         entry = resolve_list_meta(source, list_id)
         name = str(entry.get("name") or list_id)
         existing = find_list_in_index(target, name=name)
-        action = _classify_copy_action(
+        action, extra = classify_copy_action(
             existing=existing,
-            overwrite=overwrite,
+            mode=mode,
+            source_name=name,
+            rename_suffix=rename_suffix,
+            rename_map=rename_map,
+            item_key=list_id,
+            name_exists=lambda n: find_list_in_index(target, name=n),
             stop_on_conflict=stop_on_conflict,
         )
         item = {
             "list_id": list_id,
+            "id": list_id,
             "name": name,
             "action": action,
+            **extra,
         }
         if existing:
             item["target_id"] = existing.get("id")
@@ -122,23 +149,29 @@ def plan_lists_copy(
 
     counts = {
         "total": len(items),
-        "copy": sum(1 for item in items if item["action"] == "copy"),
+        "copy": sum(1 for item in items if item["action"] in ("copy", "copy_as_new")),
         "update": sum(1 for item in items if item["action"] == "update"),
         "skip": sum(1 for item in items if item["action"] == "skip"),
         "conflict": len(conflicts),
+        "copy_as_new": sum(1 for item in items if item["action"] == "copy_as_new"),
     }
-    would_abort = stop_on_conflict and bool(conflicts)
+    would_abort = (stop_on_conflict and bool(conflicts)) or (
+        mode == "copy_as_new" and bool(conflicts)
+    )
 
-    return {
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "overwrite": overwrite,
         "stop_on_conflict": stop_on_conflict,
+        "copy_mode": mode,
+        "rename_suffix": rename_suffix,
         "items": items,
         "counts": counts,
         "would_abort": would_abort,
         "conflicts": conflicts,
     }
+    return wrap_copy_plan(legacy, operation="lists.copy", mode=mode, rename_suffix=rename_suffix)
 
 
 def copy_lists_to_tenant(
@@ -148,6 +181,9 @@ def copy_lists_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
     post_copy_diff: bool = False,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
@@ -174,6 +210,9 @@ def copy_lists_to_tenant(
             list_ids,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            copy_mode=copy_mode,
+            rename_suffix=rename_suffix,
+            rename_map=rename_map,
         )
         progress.complete_stage()
         if plan["would_abort"]:
@@ -206,6 +245,8 @@ def copy_lists_to_tenant(
                     "reason": f"List {name!r} already exists on {target.slug}",
                 })
                 continue
+            if action == "copy_as_new":
+                name = effective_upload_name(item, fallback=name)
             if action == "conflict":
                 results.append({
                     "list_id": list_id,

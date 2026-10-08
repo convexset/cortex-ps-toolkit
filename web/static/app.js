@@ -10,6 +10,7 @@ const ROUTES = {
   lists: { title: "List Tools", panel: "panel-lists" },
   integrations: { title: "Integrations", panel: "panel-integrations" },
   "object-setup": { title: "Object Setup", panel: "panel-object-setup" },
+  bundles: { title: "Bundles", panel: "panel-bundles" },
   indicators: { title: "Indicators (IOCs/BIOCs)", panel: "panel-indicators" },
   "system-admin": { title: "User Administration", panel: "panel-system-admin" },
   "design-content": { title: "Object Setup", panel: "panel-object-setup" },
@@ -34,6 +35,7 @@ const PROFILE_PICKER_ROUTES = new Set([
   "xql",
   "integrations",
   "object-setup",
+  "bundles",
   "indicators",
   "system-admin",
   "design-content",
@@ -80,7 +82,7 @@ window.withLoader = withLoader;
 window.showLoader = showLoader;
 window.hideLoader = hideLoader;
 
-function showConfirmDialog({ title, message, proceedLabel = "Proceed" }) {
+function showConfirmDialog({ title, message, proceedLabel = "Proceed", html = false, proceedEnabled = null }) {
   return new Promise((resolve) => {
     const dialog = document.getElementById("confirm-dialog");
     const form = document.getElementById("confirm-dialog-form");
@@ -89,18 +91,35 @@ function showConfirmDialog({ title, message, proceedLabel = "Proceed" }) {
     const cancelBtn = document.getElementById("confirm-dialog-cancel");
     const proceedBtn = document.getElementById("confirm-dialog-proceed");
     if (!dialog || !form || !titleEl || !messageEl || !cancelBtn || !proceedBtn) {
-      resolve(window.confirm(message));
+      resolve(window.confirm(html ? "Proceed?" : message));
       return;
     }
 
     let accepted = false;
     titleEl.textContent = title;
-    messageEl.textContent = message;
+    if (html) {
+      messageEl.innerHTML = message;
+    } else {
+      messageEl.textContent = message;
+    }
     proceedBtn.textContent = proceedLabel;
+
+    const syncProceed = () => {
+      proceedBtn.disabled = typeof proceedEnabled === "function" ? !proceedEnabled() : false;
+    };
+    if (typeof proceedEnabled === "function") {
+      messageEl.addEventListener("change", syncProceed);
+      syncProceed();
+    } else {
+      proceedBtn.disabled = false;
+    }
 
     const cleanup = () => {
       cancelBtn.removeEventListener("click", onCancel);
       form.removeEventListener("submit", onSubmit);
+      if (typeof proceedEnabled === "function") {
+        messageEl.removeEventListener("change", syncProceed);
+      }
     };
     const onCancel = () => {
       accepted = false;
@@ -486,6 +505,9 @@ function reloadCurrentRouteData(route) {
   if (route === "system-admin" && systemAdminTools) {
     systemAdminTools.loadForActiveProfile();
   }
+  if (route === "bundles" && bundlesTools) {
+    bundlesTools.loadForActiveProfile();
+  }
 }
 
 async function ensureRouteMatchesCapabilities(route) {
@@ -568,6 +590,7 @@ function refillCopyTargetSelects() {
     "object-setup-orchestrate-target",
     "indicators-copy-target",
     "integrations-copy-target",
+    "bundles-copy-target",
   ].forEach((id) => {
     populateTargetSelect(document.getElementById(id), excludeSlug);
   });
@@ -787,13 +810,16 @@ async function refreshListsCache() {
 }
 
 function copyOptionsPayload(source, target, listIds) {
-  return {
+  const base = {
     source_profile: source,
     target_profile: target,
     list_ids: listIds,
+    post_copy_diff: document.getElementById("lists-copy-post-diff")?.checked ?? false,
+  };
+  return typeof mergeCopyPayload === "function" ? mergeCopyPayload(base, "lists") : {
+    ...base,
     overwrite: document.getElementById("copy-overwrite").checked,
     stop_on_conflict: document.getElementById("copy-stop-on-conflict").checked,
-    post_copy_diff: document.getElementById("lists-copy-post-diff")?.checked ?? false,
   };
 }
 
@@ -801,7 +827,10 @@ function planWouldTakeNoAction(plan) {
   if (plan.would_abort) {
     return true;
   }
-  return plan.counts.copy === 0 && plan.counts.update === 0;
+  const counts = plan.summary || plan.counts || {};
+  const copyN = counts.create ?? counts.copy ?? 0;
+  const updateN = counts.update ?? 0;
+  return copyN === 0 && updateN === 0;
 }
 
 function formatCopySummary(plan) {
@@ -1044,11 +1073,14 @@ async function copySelectedLists(triggerButton = null) {
       return;
     }
 
-    const proceedCopy = await showConfirmDialog({
-      title: "Confirm copy",
-      message: formatCopySummary(plan),
-      proceedLabel: "Copy",
-    });
+    const proceedCopy =
+      typeof confirmOperation === "function"
+        ? await confirmOperation({ title: "Confirm copy", plan, proceedLabel: "Copy", itemLabel: "list" })
+        : await showConfirmDialog({
+            title: "Confirm copy",
+            message: formatCopySummary(plan),
+            proceedLabel: "Copy",
+          });
     if (!proceedCopy) {
       return;
     }
@@ -1109,11 +1141,27 @@ function bindEvents() {
     copySelectedLists(event.currentTarget);
   });
   document.getElementById("lists-delete").addEventListener("click", deleteSelectedLists);
+  document.getElementById("lists-add-to-bundle")?.addEventListener("click", () => {
+    const rows = getSelectedLists();
+    if (!rows.length) {
+      alert("Select lists to add to bundle.");
+      return;
+    }
+    let added = 0;
+    for (const row of rows) {
+      if (typeof cptkAddToBundle === "function" && cptkAddToBundle("lists", row)) added += 1;
+    }
+    if (!added) alert("Selected lists are already in the bundle.");
+  });
   document.getElementById("lists-view")?.addEventListener("click", viewSelectedList);
   document.getElementById("lists-select-all-visible").addEventListener("click", selectAllListsVisible);
   document.getElementById("lists-select-all").addEventListener("click", selectAllLists);
   document.getElementById("lists-select-none").addEventListener("click", selectNoLists);
   bindCopyOptionExclusivity();
+  const listsCopyRow = document.getElementById("lists-copy")?.closest(".copy-row");
+  if (listsCopyRow && typeof appendCopyModeControls === "function") {
+    appendCopyModeControls(listsCopyRow, "lists");
+  }
   if (typeof bindProfileContextEvents === "function") {
     bindProfileContextEvents();
   }
@@ -1130,6 +1178,7 @@ function initContentToolPanels() {
     selectNoneBtnId: "playbooks-select-none",
     deleteBtnId: "playbooks-delete",
     copyBtnId: "playbooks-copy",
+    shallowCopyBtnId: "playbooks-copy-shallow",
     selectionCountId: "playbooks-selection-count",
     copyTargetId: "playbooks-copy-target",
     copyOverwriteId: "playbooks-copy-overwrite",

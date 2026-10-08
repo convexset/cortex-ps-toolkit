@@ -2680,13 +2680,15 @@ async function copyPlaybookComponentsForPanel(details, data) {
     }
 
     const proceedCopy =
-      typeof showConfirmDialog === "function"
-        ? await showConfirmDialog({
-            title: "Deep copy plan",
-            message: formatComponentsPlanSummary(plan, data),
-            proceedLabel: "Run copy",
-          })
-        : window.confirm(formatComponentsPlanSummary(plan, data));
+      plan.plan_version && typeof confirmOperation === "function"
+        ? await confirmOperation({ title: "Deep copy plan", plan, proceedLabel: "Run copy", itemLabel: "component" })
+        : typeof showConfirmDialog === "function"
+          ? await showConfirmDialog({
+              title: "Deep copy plan",
+              message: formatComponentsPlanSummary(plan, data),
+              proceedLabel: "Run copy",
+            })
+          : window.confirm(formatComponentsPlanSummary(plan, data));
     if (!proceedCopy) {
       return;
     }

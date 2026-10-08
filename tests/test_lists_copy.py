@@ -130,9 +130,17 @@ def test_plan_lists_copy_stop_on_conflict(
 
     mock_refresh.assert_called_once_with(target)
     assert plan["would_abort"] is True
-    assert plan["counts"] == {"total": 2, "copy": 1, "update": 0, "skip": 0, "conflict": 1}
+    assert plan["counts"] == {
+        "total": 2,
+        "copy": 1,
+        "update": 0,
+        "skip": 0,
+        "conflict": 1,
+        "copy_as_new": 0,
+    }
+    assert plan["plan_version"] == 1
     assert plan["conflicts"] == [
-        {"list_id": "b", "name": "Beta", "action": "conflict", "target_id": "existing-beta"},
+        {"list_id": "b", "id": "b", "name": "Beta", "action": "conflict", "target_id": "existing-beta"},
     ]
 
 

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Literal, Optional, Sequence
+from typing import Any, Callable, Literal, Mapping, Optional, Sequence
+
+from ..content.copy_modes import classify_copy_action
+from ..content.copy_plan_params import effective_upload_name, normalize_copy_kwargs
+from ..content.operation_plan import wrap_copy_plan
 
 from ..cache.ensure import check_analysis_caches, ensure_analysis_caches, ensure_playbooks_cache, ensure_scripts_cache
 from ..content.post_copy_diff import (
@@ -544,9 +548,24 @@ def plan_playbook_components_copy(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
     cache_only: bool = True,
     skip_cache_refresh: bool = True,
 ) -> dict[str, Any]:
+    opts = normalize_copy_kwargs(
+        overwrite=overwrite,
+        stop_on_conflict=stop_on_conflict,
+        copy_mode=copy_mode,
+        rename_suffix=rename_suffix,
+        rename_map=rename_map,
+    )
+    mode = opts["copy_mode"]
+    overwrite = opts["overwrite"]
+    stop_on_conflict = opts["stop_on_conflict"]
+    rename_suffix = opts["rename_suffix"]
+    rename_map = opts["rename_map"]
     source = get_profile(source_profile)
     target = get_profile(target_profile)
     assert_operation_supported("playbooks.copy", source.tenant_type)
@@ -586,6 +605,9 @@ def plan_playbook_components_copy(
             script_ids,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            copy_mode=mode,
+            rename_suffix=rename_suffix,
+            rename_map=rename_map,
             cache_only=cache_only,
         )
         if script_ids
@@ -603,15 +625,21 @@ def plan_playbook_components_copy(
         entry = resolve_playbook_meta(source, pb_id)
         name = str(entry.get("name") or pb_id)
         existing = find_playbook_in_index(target, name=name)
-        action = _classify_copy_action(
+        action, extra = classify_copy_action(
             existing=existing,
-            overwrite=overwrite,
+            mode=mode,
+            source_name=name,
+            rename_suffix=rename_suffix,
+            rename_map=rename_map,
+            item_key=pb_id,
+            name_exists=lambda n: find_playbook_in_index(target, name=n),
             stop_on_conflict=stop_on_conflict,
         )
         item = {
             "playbook_id": pb_id,
             "name": name,
             "action": action,
+            **extra,
             "role": next(
                 (row.get("role") for row in analysis["playbooks_in_tree"] if str(row.get("id")) == pb_id),
                 "sub_playbook",
@@ -631,21 +659,33 @@ def plan_playbook_components_copy(
         "conflict": len(playbook_conflicts),
     }
 
-    would_abort = stop_on_conflict and (
+    would_abort = (stop_on_conflict and (
         script_plan.get("would_abort") or bool(playbook_conflicts)
-    )
+    )) or (mode == "copy_as_new" and (
+        script_plan.get("would_abort") or bool(playbook_conflicts)
+    ))
 
     copy_order = _playbook_copy_order(playbook_ids, analysis, resolver)
     items_by_id = {item["playbook_id"]: item for item in playbook_items}
     playbook_waves = _plan_playbook_upload_waves(resolver, target, copy_order, items_by_id)
 
-    return {
+    flat_items: list[dict[str, Any]] = []
+    for row in script_plan.get("items") or []:
+        flat_items.append({**row, "kind": "script"})
+    for row in playbook_items:
+        flat_items.append({**row, "kind": "playbook"})
+
+    legacy = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "root_playbook_id": playbook_id,
         "root_playbook_name": analysis["root_playbook"]["name"],
         "overwrite": overwrite,
         "stop_on_conflict": stop_on_conflict,
+        "copy_mode": mode,
+        "rename_suffix": rename_suffix,
+        "items": flat_items,
+        "conflicts": (script_plan.get("conflicts") or []) + playbook_conflicts,
         "analysis_summary": scope,
         "warnings": analysis.get("warnings") or [],
         "missing_sub_playbooks": analysis.get("missing_sub_playbooks") or [],
@@ -680,7 +720,24 @@ def plan_playbook_components_copy(
             "final_playbook_cache_refresh": {"profile": target.slug, "scope": "playbooks"},
         },
         "would_abort": would_abort,
+        "counts": {
+            "total": len(flat_items),
+            "copy": sum(1 for i in flat_items if i.get("action") in ("copy", "copy_as_new")),
+            "update": sum(1 for i in flat_items if i.get("action") == "update"),
+            "skip": sum(1 for i in flat_items if i.get("action") == "skip"),
+            "conflict": sum(1 for i in flat_items if i.get("action") == "conflict"),
+        },
     }
+    return wrap_copy_plan(
+        legacy,
+        operation="playbooks.copy_components",
+        mode=mode,
+        rename_suffix=rename_suffix,
+        extra_steps=[
+            {"label": "Parallel script upload phase", "automated": True},
+            {"label": "Playbook upload waves with binding remap", "automated": True},
+        ],
+    )
 
 
 def copy_playbook_components_to_tenant(
@@ -690,6 +747,9 @@ def copy_playbook_components_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    copy_mode: Optional[str] = None,
+    rename_suffix: str = "",
+    rename_map: Optional[Mapping[str, str]] = None,
     post_copy_diff: bool = False,
     on_progress: Optional[ProgressCallback] = None,
 ) -> dict[str, Any]:
@@ -701,6 +761,9 @@ def copy_playbook_components_to_tenant(
         playbook_id,
         overwrite=overwrite,
         stop_on_conflict=stop_on_conflict,
+        copy_mode=copy_mode,
+        rename_suffix=rename_suffix,
+        rename_map=rename_map,
     )
     items_by_id = {row["playbook_id"]: row for row in plan["playbooks"]["items"]}
     source_names = _source_names_from_items(items_by_id)

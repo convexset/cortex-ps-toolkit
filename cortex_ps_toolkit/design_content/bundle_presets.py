@@ -10,8 +10,16 @@ from ..collections import load_collection, save_collection
 from ..credentials import get_profile
 from ..paths import collections_dir
 from ..platform_admin.service import list_cached_items as list_admin_cached_items
+from ..lists.cache import find_list_in_index
+from ..lists.service import refresh_lists_cache
+from ..playbooks.cache import find_playbook_in_index
+from ..playbooks.service import refresh_playbooks_cache
+from ..scripts.cache import find_script_in_index
+from ..scripts.service import refresh_scripts_cache
 from .service import list_cached_items
 from .types import ASSET_KINDS, AssetKind
+
+CONTENT_ASSETS = frozenset({"lists", "scripts", "playbooks"})
 
 BUNDLES_PATH = collections_dir() / "object_setup_bundles.json"
 CORRELATION_ASSET = "correlation-rules"
@@ -223,6 +231,43 @@ def resolve_bundle_items(profile: str, items: list[dict[str, Any]]) -> dict[str,
         saved_id = str(raw.get("id") or "").strip()
         saved_name = str(raw.get("name") or saved_id).strip()
         if not asset or not saved_name:
+            continue
+
+        if asset in CONTENT_ASSETS:
+            finder = {
+                "lists": find_list_in_index,
+                "scripts": find_script_in_index,
+                "playbooks": find_playbook_in_index,
+            }[asset]
+            refresher = {
+                "lists": refresh_lists_cache,
+                "scripts": refresh_scripts_cache,
+                "playbooks": refresh_playbooks_cache,
+            }[asset]
+            match = finder(resolved, list_id=saved_id) if asset == "lists" else finder(
+                resolved,
+                script_id=saved_id,
+            ) if asset == "scripts" else finder(resolved, playbook_id=saved_id)
+            if not match:
+                refresher(resolved)
+                match = finder(resolved, list_id=saved_id) if asset == "lists" else finder(
+                    resolved,
+                    script_id=saved_id,
+                ) if asset == "scripts" else finder(resolved, playbook_id=saved_id)
+            if not match and saved_name:
+                match = finder(resolved, name=saved_name)
+            if match:
+                output.append(
+                    {
+                        "asset": asset,
+                        "id": str(match.get("id") or saved_id),
+                        "name": str(match.get("name") or saved_name),
+                        "type": str(match.get("type") or raw.get("type") or asset),
+                        "resolved": True,
+                    },
+                )
+            else:
+                missing.append({"asset": asset, "id": saved_id, "name": saved_name})
             continue
 
         if asset == CORRELATION_ASSET:

@@ -2812,6 +2812,53 @@ button.danger:disabled {
   max-height: 90vh;
 }
 
+.op-plan-summary .op-plan-mode {
+  margin: 0.35rem 0;
+  font-size: 0.92rem;
+}
+
+.op-plan-risks .severity-high {
+  color: var(--danger, #c0392b);
+}
+
+.op-plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.op-plan-table th,
+.op-plan-table td {
+  border: 1px solid var(--border, #ddd);
+  padding: 0.25rem 0.4rem;
+  text-align: left;
+}
+
+.copy-mode-fieldset {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  margin: 0.25rem 0;
+}
+
+.copy-mode-fieldset legend {
+  font-size: 0.85rem;
+  padding: 0 0.25rem;
+}
+
+.copy-rename-suffix-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+}
+
+.op-risk-ack {
+  display: block;
+  margin-top: 0.75rem;
+}
+
 .copy-diff-panel {
   max-height: 65vh;
   overflow: auto;
