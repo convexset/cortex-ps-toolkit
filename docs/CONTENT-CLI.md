@@ -220,6 +220,21 @@ Web REST: [`api/toolkit/WEB-API.md`](api/toolkit/WEB-API.md) (Object Setup secti
 
 **Saved copy bundles** (one identifier per **source profile**): `GET/POST /api/object-setup/bundles?profile=`, `GET/DELETE /api/object-setup/bundles/{id}?profile=`, `POST /api/object-setup/bundles/resolve`. Storage: `data/collections/object_setup_bundles.json` (v2: `profiles.{slug}.{bundle_id}`).
 
+**Extended Bundles section** (web `#/bundles` + REST under `/api/bundles/*`): multi-phase copy, portable ZIP export, playbook dependency scan. No dedicated CLI subcommand yet — use REST from the dev server or call `copy_bundle_to_tenant` / `build_bundle_zip_bytes` from Python. See [`BUNDLES.md`](BUNDLES.md) and [`api/toolkit/bundles.md`](api/toolkit/bundles.md).
+
+Example copy body (HTTP):
+
+```json
+{
+  "source_profile": "xsoar-japac-dev",
+  "target_profile": "personal-xsoar6",
+  "items": [{ "asset": "scripts", "id": "MyScript", "name": "MyScript" }],
+  "shallow_playbooks": true,
+  "post_copy_diff": false,
+  "overwrite": false
+}
+```
+
 Delta since initial commit: [`CHANGELOG-post-initial-commit.md`](CHANGELOG-post-initial-commit.md).
 
 ---

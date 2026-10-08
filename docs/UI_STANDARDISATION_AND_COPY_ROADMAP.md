@@ -252,7 +252,7 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 - [ ] Resolve clarifications C1–C9.
 - [ ] Update rail icons (Script ⚙️, Object Setup 📚, Settings 🔧, add Bundles 💼 placeholder route “Coming soon” optional).
 - [ ] Align landing page cards with rail.
-- [ ] Document copy/diff UX in [`docs/FEATURES.md`](FEATURES.md) (post-copy diff, classified panel).
+- [x] Document copy/diff UX in [`docs/FEATURES.md`](FEATURES.md) (post-copy diff, classified panel, bundles result shell).
 
 ### Phase 1 — Unified confirm + result shell (1–2 weeks)
 
@@ -275,12 +275,16 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 
 ### Phase 3 — Bundles section (2–3 weeks)
 
-- [ ] New `#/bundles` route; migrate UI from object-setup.
-- [ ] Extended bundle persistence + add-from-other-sections hooks.
-- [ ] Bundle copy preview/execute with phased plan.
-- [ ] WS job `bundles.copy` if not already generic.
+- [x] New `#/bundles` route; catalog + basket UI.
+- [x] Extended bundle persistence (saved presets) + multi-asset catalog.
+- [x] Bundle copy preview/execute with phased plan + integration phase.
+- [x] Portable ZIP export + dependency scan.
+- [x] Bundle copy result UI (alerts, summary, diff panel, JSON) — [`BUNDLES.md`](BUNDLES.md).
+- [x] WS job `bundles.copy` (HTTP remains default in UI).
+- [x] Wire Bundles copy button to WS progress (like List Tools).
+- [ ] Unified operation-plan confirm for all bundle warnings (binding table UX).
 
-**Exit criteria:** Save bundle with layouts + 2 playbooks + scripts; copy to second tenant with plan + diff report.
+**Exit criteria:** Save bundle with layouts + 2 playbooks + scripts; copy to second tenant with plan + diff report. **Met** for HTTP path; WS UI adoption open.
 
 ### Phase 4 — Polish and procedural hardening (ongoing)
 

@@ -24,6 +24,9 @@ logs/
 xql_results/
 *.jsonl
 
+# Optional local checkout (package may be vendored later; see playbook-utils/)
+xdr-endpoint-utils/
+
 # ---------------------------------------------------------------------------
 # Python
 # ---------------------------------------------------------------------------

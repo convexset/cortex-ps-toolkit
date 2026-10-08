@@ -16,11 +16,13 @@ Reference for **tenant-facing Cortex APIs** used by the toolkit and **local tool
 | [Toolkit REST — Playbooks](toolkit/playbooks.md) | `/api/playbooks` |
 | [Toolkit REST — Scripts](toolkit/scripts.md) | `/api/scripts` |
 | [Toolkit REST — Integrations](toolkit/integrations.md) | `/api/integrations/*` |
+| [Toolkit REST — Bundles](toolkit/bundles.md) | `/api/bundles/*` (workflow copy, export, presets) |
 | [Toolkit REST — Vault](toolkit/vault.md) | `/api/vault/*` (local encrypted store) |
 | [Toolkit REST — XQL](toolkit/xql.md) | `/api/xql/*` |
 | [**Toolkit web API — master table**](toolkit/WEB-API.md) | All REST routes, CLI, UI, tenant paths, platform support |
 | [Content CLI reference](../CONTENT-CLI.md) | Lists, playbooks, scripts, cache, serve, XQL |
 | [List Tools agent guide](../LISTS-AGENTS.md) | Lists CLI, modules, lab tenants |
+| [Bundles agent guide](../BUNDLES-AGENTS.md) | Basket, multi-phase copy, portable export |
 | [Design-time content probe](../api-compat/content-probe.md) | Incident fields/types, layouts, bundle, VC — CRUD paths by platform |
 | [System management / RBAC probe](../api-compat/system-management-probe.md) | Get users, roles, user groups; set user role (xsoar8, xsiam, xdr5, agentix) |
 | [API Keys probe](../api-compat/api-keys-probe.md) | Get, generate, delete API keys (xsoar8, xsiam, xdr5, agentix) |

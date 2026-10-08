@@ -655,6 +655,14 @@ button.danger:disabled {
   display: none;
 }
 
+/* Bundles catalog: rows already in the workflow basket */
+.tabulator-row.in-bundle {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 8%, var(--surface) 92%);
+}
+.tabulator-row.in-bundle.tabulator-selected {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 16%, var(--surface) 84%);
+}
+
 .workflow-item {
   display: flex;
   align-items: center;

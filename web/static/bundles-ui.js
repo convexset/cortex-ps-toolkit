@@ -746,10 +746,24 @@ function initBundlesSection() {
           })
         : window.confirm("Copy bundle?");
     if (!proceed) return;
-    const result = await withLoader(
-      () => api("/api/bundles/copy", { method: "POST", body: JSON.stringify(payload) }),
-      "Copying bundle…",
-    );
+    const copyBtn = document.getElementById("bundles-copy");
+    const bundleCopyProgress =
+      typeof createOperationProgress === "function" ? createOperationProgress("Bundle copy") : null;
+    const result = bundleCopyProgress?.runCopy
+      ? await bundleCopyProgress.runCopy({
+          startMessage: `Copying bundle to ${target}…`,
+          wsAction: "bundles.copy",
+          payload,
+          httpCall: () =>
+            api("/api/bundles/copy", { method: "POST", body: JSON.stringify(payload) }),
+          loaderMessage: "Copying bundle…",
+          busyButton: copyBtn,
+          busyLabel: "Copying…",
+        })
+      : await withLoader(
+          () => api("/api/bundles/copy", { method: "POST", body: JSON.stringify(payload) }),
+          "Copying bundle…",
+        );
     const resultBlock = document.getElementById("bundles-copy-result-block");
     if (typeof presentBundleCopyResultView === "function" && resultBlock) {
       presentBundleCopyResultView(resultBlock, result);

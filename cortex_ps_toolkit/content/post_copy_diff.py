@@ -265,37 +265,113 @@ def merge_diff_summaries(*summaries: Mapping[str, int]) -> dict[str, int]:
     return out
 
 
-def aggregate_copy_diff_report(copy_result: Mapping[str, Any]) -> dict[str, Any]:
-    """Flatten per-row post_copy_diff blocks from any copy response shape."""
-    rows: list[dict[str, Any]] = []
+def _copy_diff_row_label(row: Mapping[str, Any]) -> str:
+    return str(
+        row.get("name")
+        or row.get("item_name")
+        or row.get("target_name")
+        or row.get("list_id")
+        or row.get("playbook_id")
+        or row.get("script_id")
+        or "?",
+    )
+
+
+def _append_copy_diff_rows(
+    rows: list[dict[str, Any]],
+    container: Mapping[str, Any],
+    *,
+    name_prefix: str = "",
+) -> None:
+    report = container.get("copy_diff_report")
+    if isinstance(report, dict):
+        for row in report.get("rows") or []:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or "?")
+            prefixed = f"{name_prefix}: {name}" if name_prefix else name
+            rows.append({**row, "name": prefixed})
     for key in ("results", "script_results", "playbook_results"):
-        for row in copy_result.get(key) or []:
+        for row in container.get(key) or []:
+            if not isinstance(row, dict):
+                continue
             diff = row.get("post_copy_diff")
             if not diff:
                 continue
+            label = _copy_diff_row_label(row)
+            prefixed = f"{name_prefix}: {label}" if name_prefix else label
             rows.append({
-                "name": row.get("name")
-                or row.get("item_name")
-                or row.get("target_name")
-                or row.get("list_id")
-                or row.get("playbook_id")
-                or row.get("script_id")
-                or "?",
+                "name": prefixed,
                 "status": row.get("status"),
                 "kind": diff.get("kind"),
                 "outcome": diff.get("outcome"),
                 "post_copy_diff": diff,
             })
+    assets = container.get("assets")
+    if isinstance(assets, dict):
+        for asset, asset_result in assets.items():
+            if not isinstance(asset_result, dict):
+                continue
+            child_prefix = f"{name_prefix}/{asset}" if name_prefix else str(asset)
+            _append_copy_diff_rows(rows, asset_result, name_prefix=child_prefix)
+
+
+def _is_bundle_phase_results(nested: Mapping[str, Any]) -> bool:
+    for value in nested.values():
+        if not isinstance(value, dict):
+            continue
+        if value.get("results") is not None or value.get("copy_diff_report") or value.get("assets"):
+            return True
+    return False
+
+
+def aggregate_copy_diff_report(copy_result: Mapping[str, Any]) -> dict[str, Any]:
+    """Flatten per-row post_copy_diff blocks from any copy response shape."""
+    rows: list[dict[str, Any]] = []
+    nested = copy_result.get("results")
+    if isinstance(nested, dict) and _is_bundle_phase_results(nested):
+        for phase, phase_result in nested.items():
+            if isinstance(phase_result, dict):
+                _append_copy_diff_rows(rows, phase_result, name_prefix=str(phase))
+    else:
+        _append_copy_diff_rows(rows, copy_result)
     flagged_total = sum(int((row["post_copy_diff"].get("flagged_count") or 0)) for row in rows)
     ignored_total = sum(int((row["post_copy_diff"].get("ignored_count") or 0)) for row in rows)
     return {
         "probe": copy_result.get("post_copy_diff_summary", {}).get("probe")
-        or copy_result.get("telemetry", {}).get("post_copy_diff_probe"),
+        or copy_result.get("telemetry", {}).get("post_copy_diff_probe")
+        or POST_COPY_DIFF_PROBE_ID,
         "row_count": len(rows),
         "flagged_delta_total": flagged_total,
         "ignored_delta_total": ignored_total,
         "rows": rows,
     }
+
+
+def finalize_bundle_copy_diff_metadata(out: dict[str, Any]) -> None:
+    """Merge phase diff summaries and top-level copy_diff_report for bundle copy."""
+    if not out.get("post_copy_diff"):
+        return
+    summaries: list[Mapping[str, int]] = []
+    for phase_result in (out.get("results") or {}).values():
+        if not isinstance(phase_result, dict):
+            continue
+        summary = phase_result.get("post_copy_diff_summary")
+        if not isinstance(summary, dict):
+            continue
+        total = summary.get("total")
+        if isinstance(total, dict):
+            summaries.append(total)
+        else:
+            summaries.append(summary)
+    if summaries:
+        merged = merge_diff_summaries(*summaries)
+        out["post_copy_diff_summary"] = {
+            **merged,
+            "probe": POST_COPY_DIFF_PROBE_ID,
+            "compare_mode": COMPARE_MODE,
+        }
+    out["copy_diff_report"] = aggregate_copy_diff_report(out)
 
 
 def apply_deep_copy_post_diffs(

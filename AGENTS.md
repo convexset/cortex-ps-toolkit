@@ -37,6 +37,8 @@ Unified **local** toolkit for Cortex tenant operations during professional-servi
 | [`docs/api/toolkit/WEB-API.md`](docs/api/toolkit/WEB-API.md) | **Master table** — REST routes, CLI, UI, tenant paths, platform support |
 | [`docs/CONTENT-CLI.md`](docs/CONTENT-CLI.md) | **Lists / playbooks / scripts CLI** — refresh, copy, delete, refactor |
 | [`docs/LISTS-AGENTS.md`](docs/LISTS-AGENTS.md) | **List Tools agent guide** — cache, copy, lab tenants |
+| [`docs/BUNDLES.md`](docs/BUNDLES.md) | **Bundles** — basket, phased copy, export, result UI |
+| [`docs/BUNDLES-AGENTS.md`](docs/BUNDLES-AGENTS.md) | **Bundles agent guide** — modules, diff, tests |
 
 ---
 
@@ -78,6 +80,10 @@ What do you need?
 ├─ Content types (scripts, integrations, correlation rules, widgets)
 │  → docs/FEATURES.md § Content management
 │  → ai/guidance-cache/xsoar--xsoar-8-core-api.md
+│
+├─ Extended workflow bundles (basket, copy, export)
+│  → docs/BUNDLES-AGENTS.md ← start here
+│  → docs/api/toolkit/bundles.md
 │
 ├─ XSOAR Lists (refresh cache, CRUD, copy between tenants)
 │  → docs/LISTS-AGENTS.md  ← start here

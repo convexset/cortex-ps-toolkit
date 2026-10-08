@@ -13,6 +13,7 @@ from ..lists.copy import copy_lists_to_tenant, plan_lists_copy
 from ..playbooks.copy import copy_playbooks_to_tenant, plan_playbooks_copy
 from ..playbooks.copy_shallow import plan_shallow_playbooks_copy
 from ..integrations.copy import copy_integrations_to_tenant, plan_integrations_copy
+from ..content.post_copy_diff import finalize_bundle_copy_diff_metadata
 from ..scripts.copy import copy_scripts_to_tenant, plan_scripts_copy
 
 
@@ -273,4 +274,5 @@ def copy_bundle_to_tenant(
     }
     if post_copy_diff:
         out["post_copy_diff"] = True
+        finalize_bundle_copy_diff_metadata(out)
     return out

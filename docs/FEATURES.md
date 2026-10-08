@@ -10,7 +10,7 @@ Behavioural specs for Cortex PS Toolkit features. Implementation targets Python 
 | XQL Query Tool | Run queries, history by ID, reload results + charts |
 | Playbook Tools | Navigate cache, **refresh playbooks+scripts**, refactor, copy playbooks, copy component subs+scripts |
 | Script Tools | Navigate cache, refresh scripts, copy scripts to other tenant |
-| Bundles | Basket + saved presets, catalog tabs (incl. **custom integration definitions**), cross-tenant copy (integrations → scripts → playbooks → lists → design), portable ZIP export (`integrations/*.yml`, scripts, playbooks, …), playbook dependency scan — see [`BUNDLE_PORTABLE_EXPORT.md`](BUNDLE_PORTABLE_EXPORT.md) |
+| Bundles | Basket + saved presets, catalog tabs (incl. **custom integration definitions**), cross-tenant copy (integrations → scripts → playbooks → lists → design), portable ZIP export, playbook dependency scan, deep-copy-style result UI — see [`BUNDLES.md`](BUNDLES.md) |
 
 ---
 
@@ -271,7 +271,47 @@ Playbook Tools refresh remains the primary path when preparing for playbook work
 
 ---
 
-## 8. Content management (develop as Python utilities first)
+## 8. Bundles (extended workflow)
+
+Full spec: [`BUNDLES.md`](BUNDLES.md). REST: [`api/toolkit/bundles.md`](api/toolkit/bundles.md).
+
+### User stories
+
+- Operator assembles integrations, lists, scripts, playbooks, and object-setup assets into one basket without switching nav sections repeatedly.
+- Operator saves/loads named presets per source tenant.
+- Operator copies the basket to a target tenant in safe dependency order with one confirm dialog (operation plan).
+- Operator exports a portable ZIP for offline transfer (XSOAR 6 manual import).
+- Operator scans playbook dependencies and adds missing scripts/subs to the basket.
+
+### Copy result UX
+
+After execute, the Bundles panel shows the same **copy result shell** as deep copy:
+
+- Collapsible **alerts** (failures, binding warnings, post-copy diff warnings).
+- **Summary** lines per phase (success counts align with toast via `copy_entry_succeeded`, including HTTP 2xx design rows).
+- **Full response (JSON)**.
+- **View classified copy diffs** when `post_copy_diff` was enabled (nested phase rows + optional top-level merged report).
+
+### Post-copy diff scope
+
+| Phase | `post_copy_diff` |
+| --- | --- |
+| Scripts, playbooks (shallow), lists | Yes |
+| Integrations, design assets | No |
+
+### Acceptance criteria
+
+- [x] Multi-phase copy plan + execute with integrations in basket
+- [x] Portable ZIP export with integration/script/playbook shaping
+- [x] Bundle result UI (alerts, summary, diff panel, JSON)
+- [x] Nested copy notification flattening for summary toast
+- [x] Web UI uses WebSocket `bundles.copy` with live progress when WS connected (HTTP fallback)
+- [ ] Post-copy diff on design-phase assets
+- [ ] Catalog “hide already in basket” filter (optional)
+
+---
+
+## 9. Content management (develop as Python utilities first)
 
 Manage design-time content objects beyond playbooks. Each type follows the same pattern:
 
@@ -281,7 +321,7 @@ Manage design-time content objects beyond playbooks. Each type follows the same 
 4. **Compare** (optional) — export vs cached snapshot
 5. **Upload** (optional, later) — YAML insert/save with validation
 
-### 8.1 Scripts (automations)
+### 9.1 Scripts (automations)
 
 | API (typical) | XSOAR 8 / XSIAM |
 | --- | --- |
@@ -291,19 +331,19 @@ Manage design-time content objects beyond playbooks. Each type follows the same 
 
 **Utilities:** list by prefix, show script args/outputs, find scripts referencing command, export YAML bundle.
 
-### 8.2 Integrations
+### 9.2 Integrations
 
 Integration **definitions** (pack content): list, get, show command list, docker image, dependences.
 
 Reference: demisto content structure + [`ai/guidance-cache/xsoar--integrations-and-scripts.md`](../../ai/guidance-cache/xsoar--integrations-and-scripts.md).
 
-### 8.3 Integration instances
+### 9.3 Integration instances
 
 Configured instances on tenant: list, get config (secrets masked in UI), test connectivity hook, compare config snapshots.
 
 **Security:** mask password/API fields in logs and web display; optional separate “secrets reveal” for local admin.
 
-### 8.4 Correlation rules (XSIAM)
+### 9.4 Correlation rules (XSIAM)
 
 XSIAM-specific content. List/get rules from tenant API; cache under `correlation_rules/`.
 
@@ -311,7 +351,7 @@ Use cases: inventory for tuning engagements, export rule XQL/query text, diff ag
 
 **Research needed during implementation:** exact public API paths per tenant version — consult `tools.cortex_docs search "correlation rule"` from `ai/`.
 
-### 8.5 Widgets
+### 9.5 Widgets
 
 Dashboard/report widgets: list, get definition, show data source bindings.
 
@@ -335,6 +375,19 @@ python -m cortex_ps_toolkit content refresh --profile X --scope correlation_rule
 ---
 
 ## Cross-cutting concerns
+
+### Copy / diff presentation (web)
+
+Shared modules: `web/static/copy-result-ui.js`, `web/static/copy-diff-panel-ui.js`, `web/static/operation-ui.js` (copy mode controls).
+
+| Surface | Result shell |
+| --- | --- |
+| List / script / playbook bulk copy | `presentCopyResultView` + outcome dialog |
+| Playbook deep (component) copy | `presentDeepCopyResultView` + summary |
+| **Bundles copy** | `presentBundleCopyResultView` + `summarizeBundleCopyResult` |
+| Integrations copy | Bulk alerts + outcome dialog |
+
+**Post-copy diff:** optional on execute; classified **flagged** vs **ignored** deltas in modal panel (`repr-copy-fidelity` probe). Documented per resource in `docs/api/toolkit/{lists,scripts,playbooks,bundles}.md`.
 
 | Concern | Approach |
 | --- | --- |

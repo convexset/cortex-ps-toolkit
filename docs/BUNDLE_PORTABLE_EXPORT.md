@@ -6,7 +6,7 @@ Reference comparisons (lab samples):
 
 | Role | Path |
 | --- | --- |
-| Old bundle export (anti-pattern) | `scratch/xsoar-samples/current_bundle_export__*.yml` |
+| Old bundle export (anti-pattern) | `scratch/xsoar-samples/current_bundle_export__*.yml` (if captured; else compare raw API YAML in old exports) |
 | XSOAR 6 UI export — custom | `scratch/xsoar-samples/tenant_export__Test_PB_Inv_Data_Main.yml`, `tenant_export__TEST_Show_Env.yml` |
 | XSOAR 6 UI export — **pack content** | `tenant_export__AutoFocusPolling.yml`, `tenant_export__RunPollingCommand.yml`, `tenant_export__AddKeyToList.yml` |
 
@@ -14,7 +14,7 @@ Implementation: `cortex_ps_toolkit/playbooks/portable_yaml.py`, `cortex_ps_toolk
 
 **Integration definitions** (custom only, no instances): `integrations/*.yml` via `integrations/yaml_export.py` → portable shaping; bundle copy phase runs before scripts. Pack/system definitions are resolved in the catalog but blocked at copy/export (same rules as Integrations → Copy).
 
-Compare `scratch/xsoar-samples/current_bundle_export__ProtectedHTTPCall.yml` (raw API-shaped YAML) with `ProtectedHTTPCall.yml` (tenant UI export).
+Compare raw API-shaped integration YAML with `scratch/xsoar-samples/ProtectedHTTPCall.yml` (tenant UI export).
 
 Related: [`PAYLOAD_CACHE_TO_UPLOAD.md`](PAYLOAD_CACHE_TO_UPLOAD.md) (tenant **copy** upload path).
 

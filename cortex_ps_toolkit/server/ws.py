@@ -33,7 +33,8 @@ from ..lists.copy import copy_lists_to_tenant
 from ..playbooks.copy import copy_playbooks_to_tenant
 from ..playbooks.copy_components import copy_playbook_components_to_tenant
 from ..scripts.copy import copy_scripts_to_tenant
-from .batch_copy_ws import run_batch_copy_job
+from ..bundles.copy import copy_bundle_to_tenant
+from .batch_copy_ws import run_batch_copy_job, run_bundle_copy_job
 from .copy_progress_http import publish_standard_copy_outcome
 from ..playbooks.analysis import analyze_playbook
 from ..playbooks.refactor import execute_refactor
@@ -175,6 +176,16 @@ async def _run_scripts_copy(job_id: str, payload: dict[str, Any]) -> None:
         broadcast=broadcast,
         publish_job_progress=_publish_job_progress,
         optional_bool_kwargs=frozenset({"post_copy_diff"}),
+    )
+
+
+async def _run_bundles_copy(job_id: str, payload: dict[str, Any]) -> None:
+    await run_bundle_copy_job(
+        job_id,
+        payload,
+        copy_fn=copy_bundle_to_tenant,
+        broadcast=broadcast,
+        publish_job_progress=_publish_job_progress,
     )
 
 
@@ -856,6 +867,10 @@ async def _dispatch_job(message: dict[str, Any]) -> None:
 
     if action == "cache.refresh":
         asyncio.create_task(_run_cache_refresh(job_id, payload))
+        return
+
+    if action == "bundles.copy":
+        asyncio.create_task(_run_bundles_copy(job_id, payload))
         return
 
     if action == "lists.copy":
