@@ -38,6 +38,14 @@ def add_copy_flags(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_post_copy_diff_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--post-copy-diff",
+        action="store_true",
+        help="After copy/update, fetch target and diff against source (normalized)",
+    )
+
+
 def add_copy_profiles(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--from-profile", required=True, dest="from_profile")
     parser.add_argument("--to-profile", required=True, dest="to_profile")
@@ -64,6 +72,7 @@ class ContentResourceCli:
     copy: CopyFn
     plan_delete: DeletePlanFn
     delete: DeleteFn
+    supports_post_copy_diff: bool = False
 
 
 def _cmd_refresh(resource: ContentResourceCli, args: argparse.Namespace) -> int:
@@ -117,13 +126,18 @@ def _cmd_copy(resource: ContentResourceCli, args: argparse.Namespace) -> int:
     code = validate_copy_flags(overwrite=args.overwrite, stop_on_conflict=args.stop_on_conflict)
     if code is not None:
         return code
+    copy_kwargs: dict[str, Any] = {
+        "overwrite": args.overwrite,
+        "stop_on_conflict": args.stop_on_conflict,
+    }
+    if resource.supports_post_copy_diff:
+        copy_kwargs["post_copy_diff"] = bool(getattr(args, "post_copy_diff", False))
     print_json(
         resource.copy(
             args.from_profile,
             args.to_profile,
             args.id,
-            overwrite=args.overwrite,
-            stop_on_conflict=args.stop_on_conflict,
+            **copy_kwargs,
         )
     )
     return 0
@@ -173,6 +187,8 @@ def register_content_cli(
     add_copy_profiles(copy_cmd)
     add_bulk_ids(copy_cmd, help_text=resource.id_help)
     add_copy_flags(copy_cmd)
+    if resource.supports_post_copy_diff:
+        add_post_copy_diff_flag(copy_cmd)
     copy_cmd.set_defaults(func=lambda args, r=resource: _cmd_copy(r, args))
 
     delete_preview = nested.add_parser("delete-preview", help="Preview delete on tenant")

@@ -127,24 +127,44 @@ function showConfirmDialog({ title, message, proceedLabel = "Proceed" }) {
   });
 }
 
-function showOutcomeDialog({ title, message, success = true }) {
+function showOutcomeDialog({ title, message, success = true, alerts = null }) {
   const dialog = document.getElementById("outcome-dialog");
   const titleEl = document.getElementById("outcome-dialog-title");
   const messageEl = document.getElementById("outcome-dialog-message");
+  const alertsEl = document.getElementById("outcome-dialog-alerts");
   if (!dialog || !titleEl || !messageEl) {
     window.alert(message);
     return;
   }
   titleEl.textContent = title;
   messageEl.textContent = message;
+  if (alertsEl) {
+    const list = Array.isArray(alerts) ? alerts : [];
+    if (list.length && typeof renderCopyAlertsHtml === "function") {
+      alertsEl.innerHTML = renderCopyAlertsHtml(list, { maxVisible: 10 });
+      alertsEl.classList.remove("hidden");
+      dialog.classList.toggle("outcome-has-alerts", true);
+    } else {
+      alertsEl.innerHTML = "";
+      alertsEl.classList.add("hidden");
+      dialog.classList.toggle("outcome-has-alerts", false);
+    }
+  }
   dialog.classList.toggle("outcome-success", success);
   dialog.classList.toggle("outcome-failure", !success);
   dialog.showModal();
 }
 
 function summarizeBulkCopyResult(data, itemLabel) {
+  const alerts =
+    typeof collectBulkCopyAlerts === "function" ? collectBulkCopyAlerts(data, itemLabel) : [];
   if (data.aborted) {
-    return { success: false, title: "Copy aborted", message: data.reason || "No items were copied." };
+    return {
+      success: false,
+      title: "Copy aborted",
+      message: data.reason || "No items were copied.",
+      alerts,
+    };
   }
   const results = data.results || [];
   const copied = results.filter((row) => row.status === "copied").length;
@@ -157,10 +177,44 @@ function summarizeBulkCopyResult(data, itemLabel) {
   if (skipped) parts.push(`${skipped} skipped`);
   if (failed) parts.push(`${failed} failed`);
   const detail = parts.length ? parts.join(", ") : "No changes";
+  let message = `${itemLabel}s: ${detail}.`;
+  const diffSummary = data.post_copy_diff_summary;
+  if (data.post_copy_diff && diffSummary) {
+    const { matched = 0, mismatched = 0, errors = 0 } = diffSummary;
+    const diffParts = [];
+    if (matched) diffParts.push(`${matched} match`);
+    if (mismatched) diffParts.push(`${mismatched} differ`);
+    if (errors) diffParts.push(`${errors} diff error(s)`);
+    if (diffParts.length) {
+      message += ` Post-copy diff: ${diffParts.join(", ")}.`;
+    }
+  }
+  const flaggedProbe = Boolean(
+    data.post_copy_diff && diffSummary && ((diffSummary.mismatched || 0) > 0 || (diffSummary.errors || 0) > 0),
+  );
+  const ignoredOnlyProbe = Boolean(
+    data.post_copy_diff && diffSummary && (diffSummary.ignored_only || 0) > 0 && !flaggedProbe,
+  );
+  const uploadFailed = failed > 0;
+  let title = "Copy complete";
+  if (uploadFailed) {
+    title = "Copy completed with errors";
+  } else if (flaggedProbe) {
+    title = "Copy complete (flagged diff warnings)";
+  } else if (ignoredOnlyProbe) {
+    title = "Copy complete (ignored-only diffs — see panel)";
+  }
+  if (typeof buildCopyRunTelemetryLines === "function") {
+    const telem = buildCopyRunTelemetryLines(data);
+    if (telem.length) {
+      message = `${telem.join("\n")}\n\n${message}`;
+    }
+  }
   return {
-    success: failed === 0,
-    title: failed ? "Copy completed with errors" : "Copy complete",
-    message: `${itemLabel}s: ${detail}.`,
+    success: !uploadFailed,
+    title,
+    message,
+    alerts,
   };
 }
 
@@ -186,8 +240,15 @@ function summarizeBulkDeleteResult(data, itemLabel) {
 }
 
 function summarizeComponentCopyResult(data) {
+  const alerts =
+    typeof collectDeepCopyAlerts === "function" ? collectDeepCopyAlerts(data) : [];
   if (data.aborted) {
-    return { success: false, title: "Deep copy aborted", message: data.reason || "No components were copied." };
+    return {
+      success: false,
+      title: "Deep copy aborted",
+      message: data.reason || "No components were copied.",
+      alerts,
+    };
   }
   const scriptResults = data.script_results || [];
   const playbookResults = data.playbook_results || [];
@@ -206,11 +267,46 @@ function summarizeComponentCopyResult(data) {
   if (playbooksFailed) {
     message += ` ${playbooksFailed} playbook(s) failed — check server log.`;
   }
-  const hasIssues = scriptFailed > 0 || bindingIssues > 0 || playbooksFailed > 0;
+  const diffSummary = data.post_copy_diff_summary?.total;
+  if (data.post_copy_diff && diffSummary) {
+    const diffParts = [];
+    if (diffSummary.matched) diffParts.push(`${diffSummary.matched} match`);
+    if (diffSummary.mismatched) diffParts.push(`${diffSummary.mismatched} differ`);
+    if (diffSummary.errors) diffParts.push(`${diffSummary.errors} diff error(s)`);
+    if (diffParts.length) {
+      message += ` Post-copy diff: ${diffParts.join(", ")}.`;
+    }
+  }
+  const flaggedProbe = Boolean(
+    data.post_copy_diff && diffSummary && ((diffSummary.mismatched || 0) > 0 || (diffSummary.errors || 0) > 0),
+  );
+  const ignoredOnlyProbe = Boolean(
+    data.post_copy_diff && diffSummary && (diffSummary.ignored_only || 0) > 0 && !flaggedProbe,
+  );
+  const uploadFailed = scriptFailed > 0 || bindingIssues > 0 || playbooksFailed > 0;
+  let title = "Deep copy complete";
+  if (uploadFailed) {
+    title = "Deep copy incomplete";
+  } else if (flaggedProbe) {
+    title = "Deep copy complete (flagged diff warnings)";
+  } else if (ignoredOnlyProbe) {
+    title = "Deep copy complete (ignored-only diffs — see panel)";
+  }
+  if (typeof buildCopyRunTelemetryLines === "function") {
+    const telem = buildCopyRunTelemetryLines(data);
+    if (telem.length) {
+      message = `${telem.join("\n")}\n\n${message}`;
+    }
+    const uploadOkProbe = data.post_copy_diff_summary?.upload_ok_with_diff_issue;
+    if (uploadOkProbe > 0) {
+      message += `\nNOTE ${uploadOkProbe} item(s) saved on tenant but repr-copy-fidelity probe reported mismatch/error.`;
+    }
+  }
   return {
-    success: !hasIssues,
-    title: hasIssues ? "Deep copy incomplete" : "Deep copy complete",
+    success: !uploadFailed,
+    title,
     message,
+    alerts,
   };
 }
 
@@ -697,6 +793,7 @@ function copyOptionsPayload(source, target, listIds) {
     list_ids: listIds,
     overwrite: document.getElementById("copy-overwrite").checked,
     stop_on_conflict: document.getElementById("copy-stop-on-conflict").checked,
+    post_copy_diff: document.getElementById("lists-copy-post-diff")?.checked ?? false,
   };
 }
 
@@ -969,8 +1066,19 @@ async function copySelectedLists(triggerButton = null) {
       busyButton: triggerButton,
       busyLabel: "Copying…",
     });
-    resultEl.textContent = JSON.stringify(data, null, 2);
-    resultEl.classList.remove("hidden");
+    if (typeof presentCopyResultView === "function") {
+      presentCopyResultView({
+        resultEl,
+        blockEl: document.getElementById("lists-copy-result-block"),
+        alertsEl: document.getElementById("lists-copy-alerts"),
+        data,
+        collectAlerts: collectBulkCopyAlerts,
+        itemLabel: "list",
+      });
+    } else {
+      resultEl.textContent = JSON.stringify(data, null, 2);
+      resultEl.classList.remove("hidden");
+    }
     if (typeof showOutcomeDialog === "function" && typeof summarizeBulkCopyResult === "function") {
       showOutcomeDialog(summarizeBulkCopyResult(data, "list"));
     } else if (data.aborted) {
@@ -1026,6 +1134,7 @@ function initContentToolPanels() {
     copyTargetId: "playbooks-copy-target",
     copyOverwriteId: "playbooks-copy-overwrite",
     copyStopId: "playbooks-copy-stop-on-conflict",
+    copyPostDiffId: "playbooks-copy-post-diff",
     copyResultId: "playbooks-copy-result",
     deleteResultId: "playbooks-delete-result",
     deleteDialogId: "playbooks-delete-dialog",
@@ -1067,6 +1176,7 @@ function initContentToolPanels() {
     copyTargetId: "scripts-copy-target",
     copyOverwriteId: "scripts-copy-overwrite",
     copyStopId: "scripts-copy-stop-on-conflict",
+    copyPostDiffId: "scripts-copy-post-diff",
     copyResultId: "scripts-copy-result",
     deleteResultId: "scripts-delete-result",
     deleteDialogId: "scripts-delete-dialog",

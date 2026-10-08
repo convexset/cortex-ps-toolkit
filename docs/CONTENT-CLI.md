@@ -91,6 +91,8 @@ python3 -m cortex_ps_toolkit playbooks copy-preview \
   --from-profile xsoar-japac-dev --to-profile personal-xsoar6 \
   --id <uuid> --overwrite
 
+# Optional fidelity check on execute (not preview): add --post-copy-diff to playbooks copy
+
 python3 -m cortex_ps_toolkit playbooks copy-components-preview \
   --from-profile xsoar-japac-dev --to-profile personal-xsoar6 \
   --id <root-uuid>
@@ -98,6 +100,8 @@ python3 -m cortex_ps_toolkit playbooks copy-components-preview \
 python3 -m cortex_ps_toolkit playbooks copy-components \
   --from-profile xsoar-japac-dev --to-profile personal-xsoar6 \
   --id <root-uuid> --overwrite
+
+# Optional: --post-copy-diff on copy-components (execute only)
 
 python3 -m cortex_ps_toolkit playbooks delete-preview --profile personal-xsoar6 --id <uuid>
 python3 -m cortex_ps_toolkit playbooks delete --profile personal-xsoar6 --id <uuid>
@@ -139,6 +143,8 @@ python3 -m cortex_ps_toolkit scripts show --profile cortex-cs-xdr5 --name PrintD
 python3 -m cortex_ps_toolkit scripts copy \
   --from-profile xsoar-japac-dev --to-profile bay-xsiam-1 \
   --id <uuid> --overwrite
+
+# Optional: --post-copy-diff on scripts copy (same semantics as playbooks copy)
 
 python3 -m cortex_ps_toolkit scripts delete --profile bay-xsiam-1 --id <uuid>
 ```

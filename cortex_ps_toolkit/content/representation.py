@@ -6,7 +6,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, MutableMapping, Sequence
 
-ContentKind = Literal["script", "playbook", "list"]
+ContentKind = Literal["script", "playbook", "list", "document"]
 
 # Server-owned / identity fields excluded when comparing a source item to a renamed copy.
 COMMON_IGNORE_KEYS: frozenset[str] = frozenset({
@@ -71,6 +71,8 @@ SCRIPT_METADATA_IGNORE_KEYS: frozenset[str] = frozenset({
     "isOverridable",
     "isoverridable",
     "locked",
+    "nativeImage",
+    "nativeimage",
     "mainengineinfo",
     "packPropagationLabels",
     "packpropagationlabels",
@@ -178,6 +180,15 @@ PLAYBOOK_IGNORE_KEYS = COMMON_IGNORE_KEYS | PLAYBOOK_ENVELOPE_IGNORE_KEYS | froz
     "view",
 })
 
+DOCUMENT_IGNORE_KEYS = COMMON_IGNORE_KEYS | frozenset({
+    "comment",
+    "description",
+    "details",
+    "contentitemexportablefields",
+    "packPropagationLabels",
+    "packpropagationlabels",
+})
+
 LIST_IGNORE_KEYS = COMMON_IGNORE_KEYS | frozenset({
     "truncated",
     "allRead",
@@ -198,7 +209,14 @@ def _ignore_keys(kind: ContentKind) -> frozenset[str]:
         return SCRIPT_IGNORE_KEYS
     if kind == "playbook":
         return PLAYBOOK_IGNORE_KEYS
-    return LIST_IGNORE_KEYS
+    if kind == "list":
+        return LIST_IGNORE_KEYS
+    return DOCUMENT_IGNORE_KEYS
+
+
+def _metadata_only_keys(kind: ContentKind) -> frozenset[str]:
+    fidelity = _ignore_keys(kind)
+    return fidelity - COMMON_IGNORE_KEYS
 
 
 def _canonical_key(key: str) -> str:
@@ -336,10 +354,7 @@ def _normalize_field_mapping_items(node: Any) -> Any:
     return out
 
 
-def normalize_representation(document: Mapping[str, Any], kind: ContentKind) -> dict[str, Any]:
-    """Return a comparable view of a loaded script/playbook/list document."""
-    cleaned = _drop_ignored(copy.deepcopy(dict(document)), ignore=_ignore_keys(kind))
-    cleaned = _normalize_empty_values(cleaned)
+def _apply_structural_normalization(cleaned: dict[str, Any], kind: ContentKind) -> dict[str, Any]:
     if kind == "script":
         docker = cleaned.pop("dockerImage", None) or cleaned.pop("dockerimage", None)
         if docker:
@@ -357,6 +372,20 @@ def normalize_representation(document: Mapping[str, Any], kind: ContentKind) -> 
     return cleaned
 
 
+def normalize_representation_loose(document: Mapping[str, Any], kind: ContentKind) -> dict[str, Any]:
+    """Comparable view with identity fields stripped but tenant metadata retained (for ignored deltas)."""
+    cleaned = _drop_ignored(copy.deepcopy(dict(document)), ignore=COMMON_IGNORE_KEYS)
+    cleaned = _normalize_empty_values(cleaned)
+    return _apply_structural_normalization(cleaned, kind)
+
+
+def normalize_representation(document: Mapping[str, Any], kind: ContentKind) -> dict[str, Any]:
+    """Return a comparable view of a loaded script/playbook/list document."""
+    cleaned = _drop_ignored(copy.deepcopy(dict(document)), ignore=_ignore_keys(kind))
+    cleaned = _normalize_empty_values(cleaned)
+    return _apply_structural_normalization(cleaned, kind)
+
+
 @dataclass
 class RepresentationDiff:
     kind: ContentKind
@@ -369,6 +398,45 @@ class RepresentationDiff:
             "equal": self.equal,
             "differences": self.differences,
         }
+
+
+@dataclass
+class ClassifiedRepresentationDiff:
+    kind: ContentKind
+    equal: bool
+    flagged: list[dict[str, Any]] = field(default_factory=list)
+    ignored: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "equal": self.equal,
+            "flagged": self.flagged,
+            "ignored": self.ignored,
+            "differences": self.flagged,
+            "flagged_count": len(self.flagged),
+            "ignored_count": len(self.ignored),
+        }
+
+
+def _leaf_key_from_path(path: str) -> str:
+    if not path:
+        return ""
+    segment = path.rsplit(".", 1)[-1]
+    if "[" in segment:
+        segment = segment.split("[", 1)[0]
+    return _canonical_key(segment)
+
+
+def _ignore_reason_for_path(path: str, kind: ContentKind) -> str:
+    leaf = _leaf_key_from_path(path)
+    if leaf in _metadata_only_keys(kind) or leaf.lower() in _metadata_only_keys(kind):
+        return f"metadata:{leaf}"
+    if kind == "playbook" and leaf in PLAYBOOK_TASK_ENVELOPE_IGNORE_KEYS:
+        return f"playbook_task_envelope:{leaf}"
+    if kind == "playbook" and leaf in PLAYBOOK_TASK_INNER_IGNORE_KEYS:
+        return f"playbook_task_inner:{leaf}"
+    return "normalization:structural_or_alias"
 
 
 def _diff_values(path: str, left: Any, right: Any, out: list[dict[str, Any]]) -> None:
@@ -401,8 +469,45 @@ def diff_representations(
     copied: Mapping[str, Any],
     kind: ContentKind,
 ) -> RepresentationDiff:
-    left = normalize_representation(source, kind)
-    right = normalize_representation(copied, kind)
-    differences: list[dict[str, Any]] = []
-    _diff_values("", left, right, differences)
-    return RepresentationDiff(kind=kind, equal=not differences, differences=differences)
+    classified = diff_representations_classified(source, copied, kind)
+    return RepresentationDiff(
+        kind=kind,
+        equal=classified.equal,
+        differences=classified.flagged,
+    )
+
+
+def diff_representations_classified(
+    source: Mapping[str, Any],
+    copied: Mapping[str, Any],
+    kind: ContentKind,
+) -> ClassifiedRepresentationDiff:
+    """Diff with ``flagged`` (fidelity) and ``ignored`` (metadata/structural noise) buckets."""
+    left_loose = normalize_representation_loose(source, kind)
+    right_loose = normalize_representation_loose(copied, kind)
+    verbose: list[dict[str, Any]] = []
+    _diff_values("", left_loose, right_loose, verbose)
+
+    left_fidelity = normalize_representation(source, kind)
+    right_fidelity = normalize_representation(copied, kind)
+    flagged_rows: list[dict[str, Any]] = []
+    _diff_values("", left_fidelity, right_fidelity, flagged_rows)
+
+    flagged_paths = {row.get("path") for row in flagged_rows}
+    flagged = [{**row, "classification": "flagged"} for row in flagged_rows]
+    ignored: list[dict[str, Any]] = []
+    for row in verbose:
+        path = row.get("path")
+        if path in flagged_paths:
+            continue
+        ignored.append({
+            **row,
+            "classification": "ignored",
+            "ignore_reason": _ignore_reason_for_path(str(path or ""), kind),
+        })
+    return ClassifiedRepresentationDiff(
+        kind=kind,
+        equal=not flagged,
+        flagged=flagged,
+        ignored=ignored,
+    )

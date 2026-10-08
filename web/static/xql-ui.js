@@ -40,7 +40,7 @@ function loadXqlForActiveProfile() {
     iframe.removeAttribute("src");
     return;
   }
-  const next = `/static/xql-monitor.html?profile=${encodeURIComponent(profile)}&v=20260921w`;
+  const next = `/static/xql-monitor.html?profile=${encodeURIComponent(profile)}&v=20260924b`;
   if (iframe.getAttribute("src") !== next) {
     iframe.src = next;
   }

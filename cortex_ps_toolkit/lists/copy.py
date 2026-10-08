@@ -10,6 +10,11 @@ from ..ops_log import op_action, op_info
 from ..platforms import assert_operation_supported
 from . import api
 from .cache import find_list_in_index
+from ..content.post_copy_diff import (
+    aggregate_copy_diff_report,
+    apply_post_copy_diffs,
+    new_copy_run_telemetry,
+)
 from .service import refresh_lists_cache, save_list
 
 CopyAction = Literal["copy", "update", "skip", "conflict"]
@@ -143,6 +148,7 @@ def copy_lists_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    post_copy_diff: bool = False,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     source = get_profile(source_profile)
@@ -185,6 +191,7 @@ def copy_lists_to_tenant(
             }
 
         results: list[dict[str, Any]] = []
+        diff_pending: list[tuple[int, Mapping[str, Any], str]] = []
         plan_by_id = {item["list_id"]: item for item in plan["items"]}
         total = len(list_ids)
         for index, list_id in enumerate(list_ids, start=1):
@@ -230,6 +237,12 @@ def copy_lists_to_tenant(
             list_type = str(entry.get("type") or "plain_text")
             description = str(entry.get("description") or "")
             data = normalize_list_data(entry.get("data"), "")
+            source_doc = {
+                "name": name,
+                "type": list_type,
+                "description": description,
+                "data": data,
+            }
 
             overwrite_save = action == "update"
             target_id = str(item.get("target_id") or "") if overwrite_save else None
@@ -248,11 +261,30 @@ def copy_lists_to_tenant(
                 "target_id": saved.get("id") or target_id,
                 "status_code": status_code,
             })
+            if post_copy_diff:
+                diff_pending.append((len(results) - 1, source_doc, name))
 
         progress.complete_stage()
+        if post_copy_diff and diff_pending:
+            refresh_lists_cache(target)
+            out_summary = apply_post_copy_diffs(
+                results,
+                target=target,
+                kind="list",
+                fetch=lambda profile, entity_id: resolve_list_entry(profile, entity_id),
+                pending=diff_pending,
+            )
+        else:
+            out_summary = None
         progress.complete_stage()
-        return {
+        out: dict[str, Any] = {
             "source_profile": source.slug,
             "target_profile": target.slug,
+            "post_copy_diff": post_copy_diff,
+            "telemetry": new_copy_run_telemetry(operation="lists.copy", post_copy_diff=post_copy_diff),
             "results": results,
         }
+        if out_summary is not None:
+            out["post_copy_diff_summary"] = out_summary
+            out["copy_diff_report"] = aggregate_copy_diff_report(out)
+        return out

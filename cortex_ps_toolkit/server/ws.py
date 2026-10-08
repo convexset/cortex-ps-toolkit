@@ -159,6 +159,7 @@ async def _run_lists_copy(job_id: str, payload: dict[str, Any]) -> None:
         copy_fn=copy_lists_to_tenant,
         broadcast=broadcast,
         publish_job_progress=_publish_job_progress,
+        optional_bool_kwargs=frozenset({"post_copy_diff"}),
     )
 
 
@@ -173,6 +174,7 @@ async def _run_scripts_copy(job_id: str, payload: dict[str, Any]) -> None:
         copy_fn=copy_scripts_to_tenant,
         broadcast=broadcast,
         publish_job_progress=_publish_job_progress,
+        optional_bool_kwargs=frozenset({"post_copy_diff"}),
     )
 
 
@@ -187,6 +189,7 @@ async def _run_playbooks_copy(job_id: str, payload: dict[str, Any]) -> None:
         copy_fn=copy_playbooks_to_tenant,
         broadcast=broadcast,
         publish_job_progress=_publish_job_progress,
+        optional_bool_kwargs=frozenset({"post_copy_diff"}),
     )
 
 
@@ -279,6 +282,7 @@ async def _run_playbooks_copy_components(job_id: str, payload: dict[str, Any]) -
             playbook_id,
             overwrite=bool(payload.get("overwrite")),
             stop_on_conflict=bool(payload.get("stop_on_conflict")),
+            post_copy_diff=bool(payload.get("post_copy_diff")),
             on_progress=on_progress,
         )
         await broadcast({
@@ -491,6 +495,7 @@ async def _run_design_content_copy(job_id: str, payload: dict[str, Any]) -> None
                 stop_on_conflict=bool(payload.get("stop_on_conflict")),
                 name_suffix=payload.get("name_suffix"),
                 prefer_direct_on_xsoar6=bool(payload.get("prefer_direct_on_xsoar6", True)),
+                post_copy_diff=bool(payload.get("post_copy_diff")),
                 on_progress=on_progress,
             )
         await broadcast({"type": "job.completed", "job_id": job_id, "action": "design_content.copy", "result": result})

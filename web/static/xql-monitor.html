@@ -292,8 +292,17 @@
       border-radius: 4px;
       font-size: 0.85em;
     }
+    .viz-builder-grid {
+      display: grid;
+      gap: 0.75rem;
+    }
+    .viz-encoding-row select { margin-top: 0.25rem; }
+    .hint.error { color: var(--danger); }
+    .hint.ok { color: var(--ok); }
+    #custom-viz-plot { min-height: 420px; width: 100%; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.3/plotly.min.js"></script>
+  <script src="/static/xql-visual-builder.js?v=20260924a"></script>
   <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 </head>
 <body>
@@ -391,6 +400,51 @@
       </div>
       <div id="viz-actions" class="actions" style="margin-top:0.85rem;"></div>
       <div id="viz-recommendations" class="hint" hidden></div>
+    </section>
+
+    <section id="custom-viz-builder" class="panel hidden">
+      <h2 style="margin:0 0 0.65rem;font-size:0.95rem;">Custom visual</h2>
+      <p class="hint" style="margin:0 0 0.75rem;">
+        Map result columns to chart encodings. XQL must return aggregated, long-format rows (no summing in the chart layer).
+      </p>
+      <div class="viz-builder-grid">
+        <div class="row">
+          <label class="field" style="max-width:16rem;">
+            Chart type
+            <select id="custom-viz-chart-type"></select>
+          </label>
+          <label class="field" style="max-width:14rem;">
+            Saved visual name
+            <input id="custom-viz-label" type="text" placeholder="Incidents by type" />
+          </label>
+          <label class="field" style="max-width:14rem;">
+            Chart title
+            <input id="custom-viz-title" type="text" placeholder="Optional title" />
+          </label>
+          <label class="field" style="max-width:8rem;">
+            Max categories
+            <input id="custom-viz-limit" type="number" min="5" max="100" value="20" />
+          </label>
+        </div>
+        <div id="custom-viz-encodings"></div>
+        <div class="actions">
+          <button type="button" id="custom-viz-validate-btn" class="secondary">Validate</button>
+          <button type="button" id="custom-viz-render-btn" class="primary">Render chart</button>
+          <button type="button" id="custom-viz-save-btn" class="secondary">Save visual</button>
+          <label class="field" style="max-width:14rem;margin-bottom:0;">
+            Saved
+            <select id="custom-viz-saved"></select>
+          </label>
+          <button type="button" id="custom-viz-delete-btn" class="secondary danger">Delete saved</button>
+        </div>
+        <div id="custom-viz-validation" class="hint"></div>
+      </div>
+    </section>
+
+    <section id="custom-viz-canvas-panel" class="panel hidden">
+      <div class="chart-box" style="border:0;padding:0;">
+        <div id="custom-viz-plot" class="plot"></div>
+      </div>
     </section>
 
     <section id="viz-section" class="panel hidden">
@@ -1369,6 +1423,7 @@
       els.saveTsvBtn.disabled = false;
       clearVisualization();
       updateVisualizationOffers(rows);
+      window.XqlVisualBuilder?.onResultsUpdated();
       if (options.downloadTsv) {
         downloadResultTsv(rows, options.downloadFilename || buildAutoDownloadFilename());
       }
@@ -1387,10 +1442,12 @@
     const PRESET_VIZ_RECOMMENDATIONS = {
       case_resolution: [
         "Case Duration — duration histogram (RESOLVED) + scatter coloured by status_progress",
+        "Time in System — step line of active cases over create/resolution events",
         "Hourly volume — cases by create_time hour bucket (09:00–10:00, …)",
       ],
       issue_resolution: [
         "Case Duration — duration histogram + scatter coloured by xdm.issue.status.progress",
+        "Time in System — step line of active issues over create/resolution events",
         "Hourly volume — issues by create_time hour bucket",
       ],
       playbook_run_performance_rollup: [
@@ -1537,8 +1594,18 @@
     function updateVisualizationOffers(rows) {
       els.vizActions.innerHTML = "";
       updateVizRecommendations(rows);
+      const customBtn = document.createElement("button");
+      customBtn.type = "button";
+      customBtn.className = rows.length ? "secondary" : "secondary";
+      customBtn.disabled = !rows.length;
+      customBtn.textContent = "Custom chart…";
+      customBtn.addEventListener("click", () => window.XqlVisualBuilder?.openBuilder());
+      els.vizActions.appendChild(customBtn);
       if (!rows.length) {
-        els.vizActions.innerHTML = '<span class="hint">Load results to see available visualisations.</span>';
+        const hint = document.createElement("span");
+        hint.className = "hint";
+        hint.textContent = "Load results to build a chart.";
+        els.vizActions.appendChild(hint);
         return;
       }
       const offers = VIZ_PROFILES.map((profile) => profile.detect(rows)).filter(Boolean);
@@ -1633,6 +1700,98 @@
           statusProgress,
         };
       }).filter((row) => row.createMs != null && !Number.isNaN(row.durationMinutes));
+    }
+
+    function normalizeCaseDurationTimelineRows(rows, keys) {
+      const idKey = keys.idKey
+        || findColumnKey(rows, "xdm.case.id")
+        || findColumnKey(rows, "xdm.issue.id")
+        || findColumnKey(rows, "id");
+      return rows.map((row, index) => {
+        const createRaw = cellValue(row, keys.createKey);
+        const resolutionRaw = cellValue(row, keys.resolutionKey);
+        const createMs = parseTimestamp(createRaw);
+        const resolutionMs = parseTimestamp(resolutionRaw);
+        const durationRaw = cellValue(row, keys.durationKey);
+        const durationMinutes = durationRaw !== "" ? Number(durationRaw) : NaN;
+        return {
+          id: idKey ? cellValue(row, idKey) : String(index + 1),
+          createMs,
+          resolutionMs,
+          durationMinutes,
+        };
+      }).filter((row) => row.createMs != null);
+    }
+
+    function buildTimeInSystemTimeline(timelineRows) {
+      if (!timelineRows.length) return [];
+      const minCreate = Math.min(...timelineRows.map((row) => row.createMs));
+      const baselineMs = hourBucketStartMs(minCreate);
+      const events = [{
+        ms: baselineMs,
+        delta: 0,
+        tooltip: "Baseline — active count starts at 0",
+      }];
+      timelineRows.forEach((row) => {
+        const issueId = row.id != null ? String(row.id) : "?";
+        events.push({
+          ms: row.createMs,
+          delta: 1,
+          tooltip: `Issue ${issueId} created`,
+        });
+        if (row.resolutionMs != null) {
+          const dur = Number.isNaN(row.durationMinutes) ? "?" : String(Math.round(row.durationMinutes));
+          events.push({
+            ms: row.resolutionMs,
+            delta: -1,
+            tooltip: `Issue ${issueId} resolved in ${dur} minutes`,
+          });
+        }
+      });
+      events.sort((left, right) => {
+        if (left.ms !== right.ms) return left.ms - right.ms;
+        return right.delta - left.delta;
+      });
+      let running = 0;
+      const points = [];
+      events.forEach((ev) => {
+        if (ev.delta === 0 && !points.length) {
+          points.push({ xMs: ev.ms, y: 0, tooltip: ev.tooltip });
+          return;
+        }
+        running += ev.delta;
+        points.push({ xMs: ev.ms, y: running, tooltip: ev.tooltip });
+      });
+      return points;
+    }
+
+    function renderTimeInSystemStepChart(chartId, points) {
+      const emptyLayout = {
+        ...plotLayoutBase,
+        annotations: [{
+          text: "No timeline events to plot",
+          xref: "paper", yref: "paper", x: 0.5, y: 0.5, showarrow: false,
+          font: { color: "#93a4b5", size: 13 },
+        }],
+      };
+      if (!points.length) {
+        Plotly.react(chartId, [], emptyLayout, { responsive: true, displaylogo: false });
+        return;
+      }
+      Plotly.react(chartId, [{
+        type: "scatter",
+        mode: "lines",
+        x: points.map((point) => new Date(point.xMs)),
+        y: points.map((point) => point.y),
+        text: points.map((point) => point.tooltip),
+        hovertemplate: "%{text}<extra></extra>",
+        line: { shape: "hv", color: "#5b9fd4", width: 2 },
+      }], {
+        ...plotLayoutBase,
+        title: { text: "Time in System — active issues" },
+        xaxis: { ...plotLayoutBase.xaxis, title: { text: "Event time" }, type: "date" },
+        yaxis: { ...plotLayoutBase.yaxis, title: { text: "Active issue count" }, rangemode: "tozero" },
+      }, { responsive: true, displaylogo: false });
     }
 
     function caseDurationHistogramRows(rows, offer) {
@@ -2553,6 +2712,12 @@
           "Case count",
         );
       }
+      const timelineSource = normalizeCaseDurationTimelineRows(state.rows, offer.keys);
+      const timelinePoints = buildTimeInSystemTimeline(timelineSource);
+      renderTimeInSystemStepChart(
+        mountExtraChart("case-duration-time-in-system-chart", "Time in System (active issues)"),
+        timelinePoints,
+      );
     }
 
     function mean(values) { return values.reduce((sum, v) => sum + v, 0) / values.length; }
@@ -2909,6 +3074,14 @@
     renderLocalPresets();
     bindEvents();
     updateProfileLine();
+    window.XqlVisualBuilder?.init({
+      getRows: () => state.rows,
+      getColumns: () => state.columns,
+      inferColumnType,
+      useToolkitApi: useProxy,
+      getProfile: toolkitProfile,
+      onStatus: (message, kind) => setStatus(message, kind || ""),
+    });
   </script>
 </body>
 </html>

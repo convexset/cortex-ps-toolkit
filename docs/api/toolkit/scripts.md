@@ -38,7 +38,7 @@ On XSIAM/XDR/AgentiX, refresh uses `POST /xsoar/public/v1/automation/search`. If
 
 ## POST /api/scripts/copy
 
-Same body as preview.
+Same body as preview, plus optional `"post_copy_diff": false` (default). When `true`, after each successful copy/update the toolkit re-fetches the target script and attaches a normalized `post_copy_diff` block on each result row, plus `post_copy_diff_summary` (`matched`, `mismatched`, `errors`).
 
 ## POST /api/scripts/delete/preview
 

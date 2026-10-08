@@ -15,6 +15,7 @@ function initContentTools(spec) {
     copyTargetId,
     copyOverwriteId,
     copyStopId,
+    copyPostDiffId,
     copyResultId,
     deleteResultId,
     deleteDialogId,
@@ -158,13 +159,17 @@ function initContentTools(spec) {
   }
 
   function copyOptionsPayload(source, target, itemIds) {
-    return {
+    const payload = {
       source_profile: source,
       target_profile: target,
       [idsKey]: itemIds,
       overwrite: document.getElementById(copyOverwriteId).checked,
       stop_on_conflict: document.getElementById(copyStopId).checked,
     };
+    if (copyPostDiffId) {
+      payload.post_copy_diff = document.getElementById(copyPostDiffId)?.checked ?? false;
+    }
+    return payload;
   }
 
   function planWouldTakeNoAction(plan) {
@@ -416,8 +421,21 @@ function initContentTools(spec) {
         busyButton: triggerButton,
         busyLabel: "Copying…",
       });
-      resultEl.textContent = JSON.stringify(data, null, 2);
-      resultEl.classList.remove("hidden");
+      if (typeof presentCopyResultView === "function") {
+        const blockId = copyResultId.replace(/-result$/, "-result-block");
+        const alertsId = copyResultId.replace(/-result$/, "-alerts");
+        presentCopyResultView({
+          resultEl,
+          blockEl: document.getElementById(blockId),
+          alertsEl: document.getElementById(alertsId),
+          data,
+          collectAlerts: collectBulkCopyAlerts,
+          itemLabel,
+        });
+      } else {
+        resultEl.textContent = JSON.stringify(data, null, 2);
+        resultEl.classList.remove("hidden");
+      }
       if (typeof showOutcomeDialog === "function" && typeof summarizeBulkCopyResult === "function") {
         const summary = summarizeBulkCopyResult(data, itemLabel);
         showOutcomeDialog(summary);

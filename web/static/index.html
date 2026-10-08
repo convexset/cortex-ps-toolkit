@@ -205,10 +205,20 @@
               <input type="checkbox" id="playbooks-copy-stop-on-conflict" />
               Stop if name exists on target
             </label>
+            <label class="checkbox">
+              <input type="checkbox" id="playbooks-copy-post-diff" />
+              Diff after copy (source vs target)
+            </label>
             <button type="button" id="playbooks-copy" class="primary">Copy selected</button>
           </div>
           <div id="playbooks-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
-          <pre id="playbooks-copy-result" class="result hidden"></pre>
+          <div id="playbooks-copy-result-block" class="copy-result-block hidden">
+            <div id="playbooks-copy-alerts" class="copy-result-alerts hidden" aria-live="assertive"></div>
+            <details class="copy-result-raw">
+              <summary>Full response (JSON)</summary>
+              <pre id="playbooks-copy-result" class="result"></pre>
+            </details>
+          </div>
           <pre id="playbooks-delete-result" class="result hidden"></pre>
         </section>
         <dialog id="playbooks-delete-dialog">
@@ -260,10 +270,20 @@
               <input type="checkbox" id="scripts-copy-stop-on-conflict" />
               Stop if name exists on target
             </label>
+            <label class="checkbox">
+              <input type="checkbox" id="scripts-copy-post-diff" />
+              Diff after copy (source vs target)
+            </label>
             <button type="button" id="scripts-copy" class="primary">Copy selected</button>
           </div>
           <div id="scripts-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
-          <pre id="scripts-copy-result" class="result hidden"></pre>
+          <div id="scripts-copy-result-block" class="copy-result-block hidden">
+            <div id="scripts-copy-alerts" class="copy-result-alerts hidden" aria-live="assertive"></div>
+            <details class="copy-result-raw">
+              <summary>Full response (JSON)</summary>
+              <pre id="scripts-copy-result" class="result"></pre>
+            </details>
+          </div>
           <pre id="scripts-delete-result" class="result hidden"></pre>
         </section>
         <dialog id="scripts-delete-dialog">
@@ -514,6 +534,10 @@
             <label>Target profile <select id="object-setup-copy-target"></select></label>
             <label class="checkbox"><input type="checkbox" id="object-setup-copy-overwrite" /> Overwrite if name exists</label>
             <label class="checkbox"><input type="checkbox" id="object-setup-copy-stop" /> Stop on conflict</label>
+            <label class="checkbox" title="After copy, compare source vs target read-back (flagged vs ignored deltas)">
+              <input type="checkbox" id="object-setup-copy-post-diff" />
+              Diff after copy
+            </label>
             <button type="button" id="object-setup-copy" class="primary">Copy selected</button>
           </div>
           <div id="object-setup-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
@@ -679,10 +703,20 @@
               <input type="checkbox" id="copy-stop-on-conflict" />
               Stop if name exists on target
             </label>
+            <label class="checkbox" title="After copy, compare source vs target read-back (flagged vs ignored deltas)">
+              <input type="checkbox" id="lists-copy-post-diff" />
+              Diff after copy
+            </label>
             <button type="button" id="lists-copy" class="primary">Copy selected</button>
           </div>
           <div id="lists-copy-target-context" class="profile-context profile-context-target hidden" aria-live="polite"></div>
-          <pre id="copy-result" class="result hidden"></pre>
+          <div id="lists-copy-result-block" class="copy-result-block hidden">
+            <div id="lists-copy-alerts" class="copy-result-alerts hidden" aria-live="assertive"></div>
+            <details class="copy-result-raw">
+              <summary>Full response (JSON)</summary>
+              <pre id="copy-result" class="result"></pre>
+            </details>
+          </div>
           <pre id="delete-result" class="result hidden"></pre>
         </section>
         <dialog id="lists-delete-dialog">
@@ -737,9 +771,19 @@
       </div>
     </form>
   </dialog>
+  <dialog id="copy-diff-dialog" class="app-dialog copy-diff-dialog">
+    <form method="dialog">
+      <h2>Copy diff report</h2>
+      <div id="copy-diff-panel" class="copy-diff-panel"></div>
+      <div class="dialog-actions">
+        <button type="submit" class="primary">Close</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="outcome-dialog" class="app-dialog">
     <form method="dialog">
       <h2 id="outcome-dialog-title">Operation complete</h2>
+      <div id="outcome-dialog-alerts" class="outcome-dialog-alerts hidden" aria-live="assertive"></div>
       <pre id="outcome-dialog-message" class="dialog-body"></pre>
       <div class="dialog-actions">
         <button type="submit" class="primary" id="outcome-dialog-ok">OK</button>
@@ -759,6 +803,8 @@
   <script src="/static/ws-client.js?v=20260922v"></script>
   <script src="/static/dom-utils.js?v=20260922v"></script>
   <script src="/static/panel-actions.js?v=20260922v"></script>
+  <script src="/static/copy-result-ui.js?v=20261007d"></script>
+  <script src="/static/copy-diff-panel-ui.js?v=20261007d"></script>
   <script src="/static/cache-meta.js?v=20260922v"></script>
   <script src="/static/stale-cache-ui.js?v=20260922v"></script>
   <script src="/static/analysis-fetch-ui.js?v=20260922v"></script>

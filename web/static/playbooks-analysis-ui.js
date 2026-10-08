@@ -2260,6 +2260,10 @@ function buildAnalysisBodyHtml(data, panelKey) {
         <input type="checkbox" class="analysis-components-stop" data-panel-key="${escapeHtml(panelKey)}" />
         Stop if name exists on target
       </label>
+      <label class="checkbox" title="After copy, compare source vs target documents (normalized fidelity diff)">
+        <input type="checkbox" class="analysis-components-post-diff" data-panel-key="${escapeHtml(panelKey)}" />
+        Diff after copy
+      </label>
       <button type="button" class="action analysis-copy-preview-btn" data-panel-key="${escapeHtml(panelKey)}">
         Preview copy plan
       </button>
@@ -2269,8 +2273,14 @@ function buildAnalysisBodyHtml(data, panelKey) {
     </div>
     <div class="profile-context profile-context-target analysis-components-target-context hidden" aria-live="polite"></div>
     <div class="analysis-copy-binding-preview hidden" aria-live="polite"></div>
-    <div class="analysis-copy-result-summary hidden" aria-live="polite"></div>
-    <pre class="result analysis-copy-components-result hidden"></pre>
+    <div class="copy-result-block analysis-copy-result-block hidden">
+      <div class="copy-result-alerts hidden" aria-live="assertive"></div>
+      <div class="analysis-copy-result-summary hidden" aria-live="polite"></div>
+      <details class="copy-result-raw">
+        <summary>Full response (JSON)</summary>
+        <pre class="result analysis-copy-components-result"></pre>
+      </details>
+    </div>
     </section>
   `;
 }
@@ -2322,8 +2332,10 @@ function createAnalysisPanel(data) {
   details.dataset.playbookId = data.root_playbook.id;
 
   const summary = document.createElement("summary");
-  summary.className = "analysis-accordion-summary";
-  summary.textContent = `Analysis: ${data.root_playbook.name} (${data.root_playbook.id}) · ${data.profile}`;
+  summary.className = "analysis-accordion-summary analysis-accordion-summary-row";
+  summary.innerHTML =
+    `<span class="analysis-accordion-summary-text">Analysis: ${escapeHtml(data.root_playbook.name)} (${escapeHtml(data.root_playbook.id)}) · ${escapeHtml(data.profile)}</span>` +
+    `<button type="button" class="secondary analysis-panel-dismiss" title="Remove this analysis panel">Dismiss</button>`;
 
   const body = document.createElement("div");
   body.className = "analysis-accordion-body";
@@ -2358,6 +2370,7 @@ function createAnalysisPanel(data) {
   details.querySelector(".analysis-copy-components-btn")?.addEventListener("click", () => {
     copyPlaybookComponentsForPanel(details, data);
   });
+  bindAnalysisPanelDismiss(details);
 
   details.addEventListener("toggle", () => {
     if (!details.open) return;
@@ -2367,6 +2380,23 @@ function createAnalysisPanel(data) {
   });
 
   return details;
+}
+
+function bindAnalysisPanelDismiss(details) {
+  const btn = details?.querySelector(".analysis-panel-dismiss");
+  if (!btn || btn.dataset.dismissBound === "1") {
+    return;
+  }
+  btn.dataset.dismissBound = "1";
+  btn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const accordion = document.getElementById("playbooks-analysis-accordion");
+    details.remove();
+    if (accordion && !accordion.querySelector("details.analysis-accordion-item")) {
+      accordion.classList.add("hidden");
+    }
+  });
 }
 
 function refillAnalysisCopyTargets() {
@@ -2623,8 +2653,9 @@ async function copyPlaybookComponentsForPanel(details, data) {
     playbook_id: data.root_playbook.id,
     overwrite: details.querySelector(".analysis-components-overwrite")?.checked ?? false,
     stop_on_conflict: details.querySelector(".analysis-components-stop")?.checked ?? false,
+    post_copy_diff: details.querySelector(".analysis-components-post-diff")?.checked ?? false,
   };
-  const resultEl = details.querySelector(".analysis-copy-components-result");
+  const resultBlock = details.querySelector(".analysis-copy-result-block");
 
   try {
     const cacheChoice = await promptStaleCacheChoice([
@@ -2685,9 +2716,14 @@ async function copyPlaybookComponentsForPanel(details, data) {
         "Copying playbook components…",
       );
     }
-    resultEl.textContent = JSON.stringify(copyResult, null, 2);
-    resultEl.classList.remove("hidden");
-    renderCopyResultSummary(details.querySelector(".analysis-copy-result-summary"), copyResult);
+    if (typeof presentDeepCopyResultView === "function") {
+      presentDeepCopyResultView(resultBlock, copyResult);
+    } else {
+      const resultEl = details.querySelector(".analysis-copy-components-result");
+      resultEl.textContent = JSON.stringify(copyResult, null, 2);
+      resultEl.classList.remove("hidden");
+      renderCopyResultSummary(details.querySelector(".analysis-copy-result-summary"), copyResult);
+    }
     if (typeof showOutcomeDialog === "function" && typeof summarizeComponentCopyResult === "function") {
       showOutcomeDialog(summarizeComponentCopyResult(copyResult));
     } else if (copyResult.aborted) {
@@ -3977,14 +4013,74 @@ function renderCopyBindingPreview(host, plan, analysisData) {
   host.classList.remove("hidden");
 }
 
+function appendPostCopyDiffSummaryLines(lines, rows, label) {
+  const issues = (rows || []).filter((row) => {
+    const diff = row.post_copy_diff;
+    return diff && (diff.error || diff.outcome === "mismatch" || (diff.flagged || []).length);
+  });
+  const ignoredRows = (rows || []).filter((row) => {
+    const diff = row.post_copy_diff;
+    return diff && (diff.ignored || []).length && !(diff.flagged || []).length && !diff.error;
+  });
+  if (!issues.length && !ignoredRows.length) {
+    return;
+  }
+  if (issues.length) {
+    lines.push("", `${label} post-copy diff flagged (${issues.length} item(s)):`);
+  }
+  issues.slice(0, 12).forEach((row) => {
+    const diff = row.post_copy_diff;
+    const name = row.name || row.script_id || row.playbook_id || "?";
+    const telem =
+      typeof formatPostCopyDiffTelemetry === "function" ? formatPostCopyDiffTelemetry(row, diff) : "";
+    if (telem) {
+      lines.push(`  · ${name}`);
+      lines.push(`      ${telem}`);
+    } else {
+      lines.push(`  · ${name}`);
+    }
+    if (diff.error) {
+      lines.push(`      err: ${diff.error}`);
+    } else {
+      const sample =
+        typeof formatDiffPathSample === "function" ? formatDiffPathSample(diff) : "";
+      const count = diff.difference_count ?? (diff.differences || []).length;
+      lines.push(`      mismatch: ${count} delta(s)${sample}`);
+    }
+    if (diff.telemetry_note) {
+      lines.push(`      ${diff.telemetry_note}`);
+    }
+  });
+  if (issues.length > 12) {
+    lines.push(`  … and ${issues.length - 12} more (see alerts above)`);
+  }
+  if (ignoredRows.length) {
+    lines.push("", `${label} ignored-only deltas (${ignoredRows.length} item(s)) — open copy diff panel for full list`);
+    ignoredRows.slice(0, 6).forEach((row) => {
+      const diff = row.post_copy_diff;
+      const name = row.name || row.script_id || row.playbook_id || "?";
+      const count = diff.ignored_count ?? (diff.ignored || []).length;
+      lines.push(`  · ${name}: ${count} ignored Δ`);
+    });
+  }
+}
+
 function renderCopyResultSummary(host, copyResult) {
   if (!host || !copyResult) {
     return;
   }
   const lines = [];
+  if (typeof buildCopyRunTelemetryLines === "function") {
+    const telem = buildCopyRunTelemetryLines(copyResult);
+    if (telem.length) {
+      lines.push(...telem, "");
+    }
+  }
+  host.classList.remove("copy-result-summary-issues");
   if (copyResult.aborted) {
     lines.push(`Copy aborted: ${copyResult.reason || "no components copied"}`);
     host.textContent = lines.join("\n");
+    host.classList.add("copy-result-summary-issues");
     host.classList.remove("hidden");
     return;
   }
@@ -4023,9 +4119,23 @@ function renderCopyResultSummary(host, copyResult) {
   } else {
     lines.push("", "Bindings: all playbook/script references resolved on upload.");
   }
+  appendPostCopyDiffSummaryLines(lines, copyResult.script_results, "Scripts");
+  appendPostCopyDiffSummaryLines(lines, copyResult.playbook_results, "Playbooks");
+  const hasDiffIssues =
+    typeof collectDeepCopyAlerts === "function" &&
+    collectDeepCopyAlerts(copyResult).some((alert) => alert.severity === "error");
+  const hasFailures =
+    (copyResult.script_results || []).some((row) => row.status === "failed") ||
+    (copyResult.playbook_results || []).some((row) => row.status === "failed") ||
+    (copyResult.binding_issues || []).length > 0;
   host.textContent = lines.join("\n");
+  if (hasDiffIssues || hasFailures) {
+    host.classList.add("copy-result-summary-issues");
+  }
   host.classList.remove("hidden");
 }
+
+window.renderCopyResultSummary = renderCopyResultSummary;
 
 async function previewCopyPlanForPanel(details, data) {
   const target = details.querySelector(".analysis-components-target")?.value;
@@ -4039,6 +4149,7 @@ async function previewCopyPlanForPanel(details, data) {
     playbook_id: data.root_playbook.id,
     overwrite: details.querySelector(".analysis-components-overwrite")?.checked ?? false,
     stop_on_conflict: details.querySelector(".analysis-components-stop")?.checked ?? false,
+    post_copy_diff: details.querySelector(".analysis-components-post-diff")?.checked ?? false,
   };
   const previewHost = details.querySelector(".analysis-copy-binding-preview");
   try {

@@ -553,6 +553,7 @@ function initObjectSetupUi() {
         rule_names: names,
         overwrite,
         stop_on_conflict: stopOnConflict,
+        post_copy_diff: document.getElementById("object-setup-copy-post-diff")?.checked ?? false,
       };
       const preview = await withLoader(
         () => api("/api/platform-admin/correlation-rules/copy/preview", {
@@ -601,6 +602,7 @@ function initObjectSetupUi() {
       item_ids: ids,
       overwrite,
       stop_on_conflict: stopOnConflict,
+      post_copy_diff: document.getElementById("object-setup-copy-post-diff")?.checked ?? false,
     };
     if (typeof promptStaleCacheChoice === "function") {
       const cacheChoice = await promptStaleCacheChoice([

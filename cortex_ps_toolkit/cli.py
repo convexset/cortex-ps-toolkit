@@ -15,6 +15,7 @@ from .cli_content import (
     ContentResourceCli,
     add_copy_flags,
     add_copy_profiles,
+    add_post_copy_diff_flag,
     print_json,
     register_content_cli,
     validate_copy_flags,
@@ -348,6 +349,7 @@ def _cmd_playbooks_copy_components(args: argparse.Namespace) -> int:
             args.id,
             overwrite=args.overwrite,
             stop_on_conflict=args.stop_on_conflict,
+            post_copy_diff=bool(getattr(args, "post_copy_diff", False)),
         )
     )
     return 0
@@ -524,6 +526,7 @@ PLAYBOOKS_CLI = ContentResourceCli(
     copy=copy_playbooks_to_tenant,
     plan_delete=plan_playbooks_delete,
     delete=delete_playbooks,
+    supports_post_copy_diff=True,
 )
 
 SCRIPTS_CLI = ContentResourceCli(
@@ -540,6 +543,7 @@ SCRIPTS_CLI = ContentResourceCli(
     copy=copy_scripts_to_tenant,
     plan_delete=plan_scripts_delete,
     delete=delete_scripts,
+    supports_post_copy_diff=True,
 )
 
 INTEGRATIONS_CLI = ContentResourceCli(
@@ -739,6 +743,7 @@ def build_parser() -> argparse.ArgumentParser:
         add_copy_profiles(comp_copy)
         comp_copy.add_argument("--id", required=True, help="Root playbook id")
         add_copy_flags(comp_copy)
+        add_post_copy_diff_flag(comp_copy)
         comp_copy.set_defaults(func=_cmd_playbooks_copy_components)
 
         comp_trial = nested.add_parser(

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from cortex_ps_toolkit.content.representation import diff_representations, normalize_representation
+from cortex_ps_toolkit.content.representation import (
+    diff_representations,
+    diff_representations_classified,
+    normalize_representation,
+)
 
 
 def test_normalize_representation_script_docker_alias() -> None:
@@ -72,6 +76,28 @@ def test_playbook_normalizes_task_envelope_noise() -> None:
         },
     }
     diff = diff_representations(source, copied, "playbook")
+    assert diff.equal is True
+
+
+def test_classified_diff_native_image_ignored_not_flagged() -> None:
+    source = {"name": "S", "type": "python", "script": "x=1"}
+    copied = {"name": "S", "type": "python", "script": "x=1", "nativeImage": True}
+    classified = diff_representations_classified(source, copied, "script")
+    assert classified.equal is True
+    assert classified.flagged == []
+    assert len(classified.ignored) == 1
+    assert classified.ignored[0].get("path") == "nativeImage"
+
+
+def test_script_ignores_native_image_tenant_flag() -> None:
+    source = {"name": "TEST_Show_Env", "type": "python", "script": "return_results('ok')"}
+    copied = {
+        "name": "TEST_Show_Env",
+        "type": "python",
+        "script": "return_results('ok')",
+        "nativeImage": True,
+    }
+    diff = diff_representations(source, copied, "script")
     assert diff.equal is True
 
 

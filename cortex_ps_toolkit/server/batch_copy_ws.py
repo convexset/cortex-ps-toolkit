@@ -20,6 +20,7 @@ async def run_batch_copy_job(
     copy_fn: Callable[..., dict[str, Any]],
     broadcast: Callable[..., Any],
     publish_job_progress: Callable[[str, str, dict[str, Any]], None],
+    optional_bool_kwargs: frozenset[str] = frozenset(),
 ) -> None:
     source = str(payload.get("source_profile") or "")
     target = str(payload.get("target_profile") or "")
@@ -50,6 +51,7 @@ async def run_batch_copy_job(
         publish_job_progress(job_id, action, event)
 
     try:
+        extra_kwargs = {key: bool(payload.get(key)) for key in optional_bool_kwargs}
         result = await asyncio.to_thread(
             copy_fn,
             source,
@@ -58,6 +60,7 @@ async def run_batch_copy_job(
             overwrite=bool(payload.get("overwrite")),
             stop_on_conflict=bool(payload.get("stop_on_conflict")),
             on_progress=on_progress,
+            **extra_kwargs,
         )
         await broadcast({
             "type": "job.completed",

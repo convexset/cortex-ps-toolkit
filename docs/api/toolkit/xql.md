@@ -41,4 +41,17 @@ python3 -m cortex_ps_toolkit xql run --profile psojapac-xsiam \
 
 **CLI:** Presets are web-only; query text via `--query` / `--query-file`.
 
+## Custom visualisations
+
+See [`../../xql-visual-builder.md`](../../xql-visual-builder.md).
+
+| Route | Method |
+| --- | --- |
+| `/api/xql/visualizations/chart-types` | GET |
+| `/api/xql/visualizations/schema` | POST |
+| `/api/xql/visualizations/validate` | POST |
+| `/api/xql/visualizations/render` | POST |
+| `/api/xql/visualizations` | GET / POST |
+| `/api/xql/visualizations/{visualization_id}` | DELETE |
+
 Master table: [`WEB-API.md`](WEB-API.md)

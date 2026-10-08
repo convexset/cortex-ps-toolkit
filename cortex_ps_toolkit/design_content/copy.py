@@ -23,6 +23,13 @@ from .bundle import (
     write_preprocess_direct,
 )
 from .cache import list_cached, load_body
+from ..content.post_copy_diff import (
+    COMPARE_MODE,
+    POST_COPY_DIFF_PROBE_ID,
+    aggregate_copy_diff_report,
+    new_copy_run_telemetry,
+)
+from ..content.representation import diff_representations_classified
 from .representation import diff_design_assets
 from .copy_progress import notify_item_copied
 from .service import get_item_body, refresh_asset_cache
@@ -186,6 +193,7 @@ def copy_assets_to_tenant(
     stop_on_conflict: bool = False,
     name_suffix: Optional[str] = None,
     prefer_direct_on_xsoar6: bool = True,
+    post_copy_diff: bool = False,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     source = get_profile(source_profile) if isinstance(source_profile, str) else source_profile
@@ -372,4 +380,42 @@ def copy_assets_to_tenant(
         plan["results"] = results
         plan["fidelity"] = fidelity
         plan["executed"] = True
+        plan["post_copy_diff"] = post_copy_diff
+        if post_copy_diff:
+            for entry, _write_doc in to_write:
+                target_id = str(entry["target_id"])
+                source_id = str(entry["source_id"])
+                target_name = str(entry.get("target_name") or target_id)
+                try:
+                    source_body = get_item_body(source, asset, source_id)
+                    read_back = get_item_body(target, asset, target_id)
+                except KeyError:
+                    continue
+                classified = diff_representations_classified(source_body, read_back, "document")
+                payload = classified.to_dict()
+                payload.update({
+                    "probe": POST_COPY_DIFF_PROBE_ID,
+                    "compare_mode": COMPARE_MODE,
+                    "kind": "document",
+                    "item_name": target_name,
+                    "asset": asset,
+                    "outcome": (
+                        "mismatch"
+                        if payload.get("flagged")
+                        else ("match_ignored_delta" if payload.get("ignored") else "match")
+                    ),
+                })
+                upload_status = "updated" if entry.get("action") == "update" else "copied"
+                payload["upload_status"] = upload_status
+                for row in results:
+                    if str(row.get("target_id")) == target_id:
+                        row["post_copy_diff"] = payload
+                        row["name"] = target_name
+                        row["status"] = upload_status
+                        break
+            plan["telemetry"] = new_copy_run_telemetry(
+                operation="design_content.copy",
+                post_copy_diff=True,
+            )
+            plan["copy_diff_report"] = aggregate_copy_diff_report(plan)
         return plan

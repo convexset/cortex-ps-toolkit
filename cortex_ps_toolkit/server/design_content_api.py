@@ -128,6 +128,7 @@ async def api_design_content_copy(request: Request) -> JSONResponse:
         body = await read_json(request)
         source, target, item_ids, overwrite, stop_on_conflict, name_suffix = _parse_copy_body(body, asset)
         prefer_direct = bool(body.get("prefer_direct_on_xsoar6", True))
+        post_copy_diff = bool(body.get("post_copy_diff"))
         title = f"Copy {asset}"
         on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
@@ -140,6 +141,7 @@ async def api_design_content_copy(request: Request) -> JSONResponse:
             stop_on_conflict=stop_on_conflict,
             name_suffix=name_suffix,
             prefer_direct_on_xsoar6=prefer_direct,
+            post_copy_diff=post_copy_diff,
             on_progress=on_progress,
         )
         publish_standard_copy_outcome(result, title=title, source=source, target=target)

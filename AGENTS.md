@@ -71,6 +71,10 @@ What do you need?
 │  → WS jobs: playbooks.refactor.execute, playbooks.refactor.workflow
 │  → MFEC benchmark: scripts/benchmark_mfec_refactor.py → data/refactor-benchmarks/
 │
+├─ XDR endpoints, live response scripts, agent tags
+│  → xdr-endpoint-utils/AGENTS.md ← start here
+│  → python3 -m xdr_endpoint_utils --credentials … endpoints-list
+│
 ├─ Content types (scripts, integrations, correlation rules, widgets)
 │  → docs/FEATURES.md § Content management
 │  → ai/guidance-cache/xsoar--xsoar-8-core-api.md
@@ -117,6 +121,7 @@ What do you need?
 | Guide | Path |
 | --- | --- |
 | Playbook refactor (reference impl) | `playbook-utils/AGENTS.md` |
+| XDR endpoint / script / tag utils | `xdr-endpoint-utils/AGENTS.md` |
 | XSOAR dev workspace | `ai/AGENTS.md` |
 | Playbook YAML offline analysis | `ai/tools/playbook_yaml/README.md` |
 | Incident workflow metrics | `ai/guidance-sources/xsoar-incident-workflow-analysis.md` |

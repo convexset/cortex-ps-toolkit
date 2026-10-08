@@ -52,7 +52,7 @@ Classifies playbook body availability before analysis: counts of index entries v
 
 ## POST /api/playbooks/copy-components
 
-Same body as preview. Copies referenced scripts first, then sub-playbooks (deepest first), then root; rebinds sub-playbook task `playbookId`/`playbookName` to the target tenant cache before upload.
+Same body as preview, plus optional `"post_copy_diff": false` (default). Copies referenced scripts first, then sub-playbooks (deepest first), then root; rebinds sub-playbook task `playbookId`/`playbookName` to the target tenant cache before upload. When `post_copy_diff` is enabled, each saved script/playbook row includes a normalized fidelity diff (`content/representation`, not refactor extract compare) and `post_copy_diff_summary` reports `{ scripts, playbooks, total }` counts.
 
 ## POST /api/playbooks/copy/preview
 
@@ -72,7 +72,7 @@ Same body as preview. Copies referenced scripts first, then sub-playbooks (deepe
 
 ## POST /api/playbooks/copy
 
-Same body as preview. Executes copy; returns `results[]` with `status`: `copied`, `updated`, `skipped`.
+Same body as preview, plus optional `"post_copy_diff": false` (default). Executes copy; returns `results[]` with `status`: `copied`, `updated`, `skipped`. When `post_copy_diff` is enabled, each successful row includes normalized diff vs source and the response includes `post_copy_diff_summary`.
 
 ## POST /api/playbooks/delete/preview
 

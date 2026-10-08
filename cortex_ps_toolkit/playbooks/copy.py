@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Callable, Literal, Mapping, Optional, Sequence
 
+from ..content.post_copy_diff import (
+    aggregate_copy_diff_report,
+    apply_post_copy_diffs,
+    new_copy_run_telemetry,
+)
 from ..core.batch_copy_progress import emit_copy_item_step, make_batch_copy_progress
 from ..core.client import TenantApiError
 from ..ops_log import op_action, op_info
@@ -109,6 +114,7 @@ def copy_playbooks_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    post_copy_diff: bool = False,
     on_progress: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> dict[str, Any]:
     source = get_profile(source_profile)
@@ -150,6 +156,7 @@ def copy_playbooks_to_tenant(
             }
 
         results: list[dict[str, Any]] = []
+        diff_pending: list[tuple[int, dict[str, Any], str]] = []
         plan_by_id = {item["playbook_id"]: item for item in plan["items"]}
         total = len(playbook_ids)
         for index, playbook_id in enumerate(playbook_ids, start=1):
@@ -224,13 +231,27 @@ def copy_playbooks_to_tenant(
                 "status_code": status_code,
                 "binding_unresolved": unresolved,
             })
+            if post_copy_diff:
+                diff_pending.append((len(results) - 1, playbook_doc, name))
 
         progress.complete_stage()
         op_info("Refreshing playbooks cache on %s after playbook copy", target.slug)
         refresh_playbooks_cache(target)
         progress.complete_stage()
-        return {
+        out: dict[str, Any] = {
             "source_profile": source.slug,
             "target_profile": target.slug,
+            "post_copy_diff": post_copy_diff,
+            "telemetry": new_copy_run_telemetry(operation="playbooks.copy", post_copy_diff=post_copy_diff),
             "results": results,
         }
+        if post_copy_diff and diff_pending:
+            out["post_copy_diff_summary"] = apply_post_copy_diffs(
+                results,
+                target=target,
+                kind="playbook",
+                fetch=api.get_playbook,
+                pending=diff_pending,
+            )
+            out["copy_diff_report"] = aggregate_copy_diff_report(out)
+        return out

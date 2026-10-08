@@ -42,6 +42,10 @@ function showActionResult(resultElementId, result) {
   if (!el) return;
   el.textContent = JSON.stringify(result, null, 2);
   el.classList.remove("hidden");
+  const wrap = el.closest(".copy-result-block") || el.parentElement;
+  if (typeof ensureCopyDiffPanelButton === "function") {
+    ensureCopyDiffPanelButton(wrap, result);
+  }
 }
 
 function summarizeGenericResult(result, { itemLabel = "item", operation = "generic" } = {}) {

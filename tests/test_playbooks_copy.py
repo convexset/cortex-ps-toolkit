@@ -75,6 +75,7 @@ def test_copy_playbooks_to_tenant(
     mock_save_document.return_value = ({"id": "new-id"}, 200, [])
 
     result = copy_playbooks_to_tenant("src", "dst", ["pb1"])
+    assert result["post_copy_diff"] is False
     assert result["results"][0]["status"] == "copied"
     mock_save_document.assert_called_once()
     assert mock_save_document.call_args.kwargs["overwrite"] is False

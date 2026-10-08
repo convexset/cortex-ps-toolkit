@@ -105,6 +105,7 @@ def make_copy_handler(
     *,
     ids_key: str,
     copy_title: str = "Copy",
+    optional_bool_kwargs: frozenset[str] = frozenset(),
 ) -> Callable[[Request], JSONResponse]:
     async def handler(request: Request) -> JSONResponse:
         try:
@@ -119,6 +120,7 @@ def make_copy_handler(
             if not source or not target or not item_ids:
                 raise ValueError(f"source_profile, target_profile, {ids_key} required")
             on_progress = chain_progress(http_staged_copy_progress(copy_title))
+            extra_kwargs = {key: bool(body.get(key)) for key in optional_bool_kwargs}
             result = await run_sync(
                 copy_to_tenant,
                 source,
@@ -127,6 +129,7 @@ def make_copy_handler(
                 overwrite=overwrite,
                 stop_on_conflict=stop_on_conflict,
                 on_progress=on_progress,
+                **extra_kwargs,
             )
             publish_standard_copy_outcome(
                 result,

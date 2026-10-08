@@ -58,6 +58,13 @@ from .xql_api import (
     api_xql_user_presets,
     api_xql_user_presets_delete,
     api_xql_user_presets_save,
+    api_xql_visualization_chart_types,
+    api_xql_visualization_render,
+    api_xql_visualization_schema,
+    api_xql_visualization_validate,
+    api_xql_visualizations_delete,
+    api_xql_visualizations_list,
+    api_xql_visualizations_save,
 )
 from .common import error_response, read_json, run_sync
 from .events import bind_event_loop
@@ -118,23 +125,24 @@ async def api_lists_refresh(request: Request) -> JSONResponse:
         return error_response(exc, status)
 
 
-def _parse_lists_copy_body(body: dict[str, Any]) -> tuple[str, str, list[str], bool, bool]:
+def _parse_lists_copy_body(body: dict[str, Any]) -> tuple[str, str, list[str], bool, bool, bool]:
     source = str(body.get("source_profile") or "")
     target = str(body.get("target_profile") or "")
     list_ids = [str(item) for item in (body.get("list_ids") or [])]
     overwrite = bool(body.get("overwrite"))
     stop_on_conflict = bool(body.get("stop_on_conflict"))
+    post_copy_diff = bool(body.get("post_copy_diff"))
     if stop_on_conflict and overwrite:
         raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
     if not source or not target or not list_ids:
         raise ValueError("source_profile, target_profile, list_ids required")
-    return source, target, list_ids, overwrite, stop_on_conflict
+    return source, target, list_ids, overwrite, stop_on_conflict, post_copy_diff
 
 
 async def api_lists_copy_preview(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
-        source, target, list_ids, overwrite, stop_on_conflict = _parse_lists_copy_body(body)
+        source, target, list_ids, overwrite, stop_on_conflict, _post_copy_diff = _parse_lists_copy_body(body)
         plan = await run_sync(
             plan_lists_copy,
             source,
@@ -186,7 +194,7 @@ async def api_lists_copy(request: Request) -> JSONResponse:
         from .copy_progress_http import http_staged_copy_progress, publish_standard_copy_outcome
 
         body = await read_json(request)
-        source, target, list_ids, overwrite, stop_on_conflict = _parse_lists_copy_body(body)
+        source, target, list_ids, overwrite, stop_on_conflict, post_copy_diff = _parse_lists_copy_body(body)
         title = "Lists copy"
         on_progress = chain_progress(http_staged_copy_progress(title))
         result = await run_sync(
@@ -196,6 +204,7 @@ async def api_lists_copy(request: Request) -> JSONResponse:
             list_ids,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            post_copy_diff=post_copy_diff,
             on_progress=on_progress,
         )
         publish_standard_copy_outcome(result, title=title, source=source, target=target)
@@ -263,23 +272,24 @@ async def api_playbooks_analysis(request: Request) -> JSONResponse:
         return error_response(exc, status)
 
 
-def _parse_playbook_components_body(body: dict[str, Any]) -> tuple[str, str, str, bool, bool]:
+def _parse_playbook_components_body(body: dict[str, Any]) -> tuple[str, str, str, bool, bool, bool]:
     source = str(body.get("source_profile") or "")
     target = str(body.get("target_profile") or "")
     playbook_id = str(body.get("playbook_id") or "")
     overwrite = bool(body.get("overwrite"))
     stop_on_conflict = bool(body.get("stop_on_conflict"))
+    post_copy_diff = bool(body.get("post_copy_diff"))
     if stop_on_conflict and overwrite:
         raise ValueError("overwrite and stop_on_conflict cannot both be enabled")
     if not source or not target or not playbook_id:
         raise ValueError("source_profile, target_profile, playbook_id required")
-    return source, target, playbook_id, overwrite, stop_on_conflict
+    return source, target, playbook_id, overwrite, stop_on_conflict, post_copy_diff
 
 
 async def api_playbooks_copy_components_preview(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
-        source, target, playbook_id, overwrite, stop_on_conflict = _parse_playbook_components_body(body)
+        source, target, playbook_id, overwrite, stop_on_conflict, _post_copy_diff = _parse_playbook_components_body(body)
         plan = await run_sync(
             plan_playbook_components_copy,
             source,
@@ -297,7 +307,7 @@ async def api_playbooks_copy_components_preview(request: Request) -> JSONRespons
 async def api_playbooks_copy_components(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
-        source, target, playbook_id, overwrite, stop_on_conflict = _parse_playbook_components_body(body)
+        source, target, playbook_id, overwrite, stop_on_conflict, post_copy_diff = _parse_playbook_components_body(body)
         from .copy_notifications import publish_deep_copy_complete_notification
 
         def on_progress(event: dict[str, Any]) -> None:
@@ -320,6 +330,7 @@ async def api_playbooks_copy_components(request: Request) -> JSONResponse:
             playbook_id,
             overwrite=overwrite,
             stop_on_conflict=stop_on_conflict,
+            post_copy_diff=post_copy_diff,
             on_progress=on_progress,
         )
         publish_deep_copy_complete_notification(result, source=source, target=target)
@@ -518,7 +529,12 @@ def create_app() -> Starlette:
         ),
         Route(
             "/api/playbooks/copy",
-            make_copy_handler(copy_playbooks_to_tenant, ids_key="playbook_ids", copy_title="Playbooks copy"),
+            make_copy_handler(
+                copy_playbooks_to_tenant,
+                ids_key="playbook_ids",
+                copy_title="Playbooks copy",
+                optional_bool_kwargs=frozenset({"post_copy_diff"}),
+            ),
             methods=["POST"],
         ),
         Route(
@@ -548,7 +564,12 @@ def create_app() -> Starlette:
         ),
         Route(
             "/api/scripts/copy",
-            make_copy_handler(copy_scripts_to_tenant, ids_key="script_ids", copy_title="Scripts copy"),
+            make_copy_handler(
+                copy_scripts_to_tenant,
+                ids_key="script_ids",
+                copy_title="Scripts copy",
+                optional_bool_kwargs=frozenset({"post_copy_diff"}),
+            ),
             methods=["POST"],
         ),
         Route(
@@ -567,6 +588,17 @@ def create_app() -> Starlette:
         Route("/api/xql/presets/user", api_xql_user_presets, methods=["GET"]),
         Route("/api/xql/presets/user", api_xql_user_presets_save, methods=["POST"]),
         Route("/api/xql/presets/user/{preset_id}", api_xql_user_presets_delete, methods=["DELETE"]),
+        Route("/api/xql/visualizations/chart-types", api_xql_visualization_chart_types, methods=["GET"]),
+        Route("/api/xql/visualizations/validate", api_xql_visualization_validate, methods=["POST"]),
+        Route("/api/xql/visualizations/render", api_xql_visualization_render, methods=["POST"]),
+        Route("/api/xql/visualizations/schema", api_xql_visualization_schema, methods=["POST"]),
+        Route("/api/xql/visualizations", api_xql_visualizations_list, methods=["GET"]),
+        Route("/api/xql/visualizations", api_xql_visualizations_save, methods=["POST"]),
+        Route(
+            "/api/xql/visualizations/{visualization_id}",
+            api_xql_visualizations_delete,
+            methods=["DELETE"],
+        ),
         Route("/api/integrations/commands", integrations_api.api_integrations_commands, methods=["GET"]),
         Route(
             "/api/integrations/commands/{integration_id}",

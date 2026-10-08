@@ -7,6 +7,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Literal, Optional, Sequence
 
 from ..cache.ensure import check_analysis_caches, ensure_analysis_caches, ensure_playbooks_cache, ensure_scripts_cache
+from ..content.post_copy_diff import (
+    aggregate_copy_diff_report,
+    apply_deep_copy_post_diffs,
+    new_copy_run_telemetry,
+)
 from ..core.client import TenantApiError
 from ..core.staged_progress import StagedProgressReporter
 from ..credentials import CredentialProfile, get_profile
@@ -685,6 +690,7 @@ def copy_playbook_components_to_tenant(
     *,
     overwrite: bool = False,
     stop_on_conflict: bool = False,
+    post_copy_diff: bool = False,
     on_progress: Optional[ProgressCallback] = None,
 ) -> dict[str, Any]:
     source = get_profile(source_profile)
@@ -719,6 +725,7 @@ def copy_playbook_components_to_tenant(
             items_by_id=items_by_id,
             source_names=source_names,
             progress=progress,
+            post_copy_diff=post_copy_diff,
         )
 
 
@@ -731,6 +738,7 @@ def _execute_playbook_components_copy(
     items_by_id: dict[str, dict[str, Any]],
     source_names: dict[str, str],
     progress: StagedProgressReporter,
+    post_copy_diff: bool = False,
 ) -> dict[str, Any]:
     if plan["would_abort"]:
         conflicts = plan["scripts"].get("conflicts") or plan["playbooks"]["conflicts"]
@@ -855,7 +863,10 @@ def _execute_playbook_components_copy(
             continue
         pending_upload.append(pb_id)
 
-    playbook_docs = {pb_id: api.get_playbook(source, pb_id) for pb_id in pending_upload}
+    playbook_source_docs: dict[str, dict[str, Any]] = {
+        pb_id: api.get_playbook(source, pb_id) for pb_id in pending_upload
+    }
+    playbook_docs = playbook_source_docs
 
     max_upload_waves = max(len(pending_upload) * 3, 1) + copy_binding_resolve_retries()
     while pending_upload:
@@ -1017,6 +1028,20 @@ def _execute_playbook_components_copy(
     refresh_playbooks_cache(target)
     progress.complete_stage("Final Playbook Cache Refresh")
 
+    post_copy_diff_summary: dict[str, Any] | None = None
+    if post_copy_diff:
+        if script_results:
+            ensure_scripts_cache(target, force=True)
+        post_copy_diff_summary = apply_deep_copy_post_diffs(
+            source=source,
+            target=target,
+            script_results=script_results,
+            playbook_results=playbook_results,
+            playbook_source_docs=playbook_source_docs,
+            fetch_script=scripts_api.get_script,
+            fetch_playbook=api.get_playbook,
+        )
+
     failed_scripts = [r for r in script_results if r.get("status") == "failed"]
     if binding_issues or failed_scripts:
         op_info(
@@ -1031,11 +1056,16 @@ def _execute_playbook_components_copy(
             len([r for r in playbook_results if r.get("status") in ("copied", "updated")]),
         )
 
-    return {
+    out: dict[str, Any] = {
         "source_profile": source.slug,
         "target_profile": target.slug,
         "root_playbook_id": playbook_id,
         "root_playbook_name": plan["root_playbook_name"],
+        "post_copy_diff": post_copy_diff,
+        "telemetry": new_copy_run_telemetry(
+            operation="playbooks.copy_components",
+            post_copy_diff=post_copy_diff,
+        ),
         "script_results": script_results,
         "playbook_results": playbook_results,
         "binding_issues": binding_issues,
@@ -1043,3 +1073,7 @@ def _execute_playbook_components_copy(
         "playbook_id_remap": playbook_id_remap,
         "warnings": plan.get("warnings") or [],
     }
+    if post_copy_diff_summary is not None:
+        out["post_copy_diff_summary"] = post_copy_diff_summary
+        out["copy_diff_report"] = aggregate_copy_diff_report(out)
+    return out
