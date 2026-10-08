@@ -75,10 +75,15 @@ def test_refactor_validate_extract_leaf_api(
 def test_refactor_preview_api(mock_plan: MagicMock, client: TestClient) -> None:
     mock_plan.return_value = {
         "profile": "lab",
-        "playbook_name": "Test_PB",
+        "ok": True,
+        "source_playbook": {"id": "pb-1", "name": "Test_PB"},
+        "parent_copy_name": "Test_PB [REFACTOR-M]",
         "leaf_tasks": ["1"],
         "clusters": [],
         "post_task_updates": [],
+        "extractions": [{"kind": "leaf", "task_id": "1", "subplaybook_name": "Test_PB_Sub_1"}],
+        "existing_targets": [],
+        "reasons": [],
     }
     response = client.post(
         "/api/playbooks/refactor/preview",
@@ -90,7 +95,9 @@ def test_refactor_preview_api(mock_plan: MagicMock, client: TestClient) -> None:
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["playbook_name"] == "Test_PB"
+    assert body["plan_version"] == 1
+    assert body["operation"] == "playbooks.refactor"
+    assert body["source_playbook"]["name"] == "Test_PB"
     mock_plan.assert_called_once()
     assert mock_plan.call_args.args[0] == "lab"
 

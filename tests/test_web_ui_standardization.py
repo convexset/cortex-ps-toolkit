@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC = REPO_ROOT / "web" / "static"
-BUILD_ID = "20261009e"
+BUILD_ID = "20261009f"
 
 
 def _read_static(name: str) -> str:
@@ -108,6 +108,9 @@ def test_operation_ui_exports_confirm_helpers() -> None:
     source = _read_static("operation-ui.js")
     for symbol in (
         "normalizeConfirmPlan",
+        "confirmDeletePlan",
+        "openRenameMapEditor",
+        "scheduleCopyNameCheck",
         "confirmCopyPlan",
         "confirmOperation",
         "renderOperationPlan",

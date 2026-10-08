@@ -845,5 +845,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const copyRow = document.getElementById("bundles-copy-row");
   if (copyRow && typeof appendCopyModeControls === "function") {
     appendCopyModeControls(copyRow, "bundles");
+    copyRow.addEventListener("cptk-open-rename-map", () => {
+      const target = document.getElementById("bundles-copy-target")?.value;
+      const items = basketItemsForApi().map((row) => ({ id: row.id, name: row.name }));
+      if (typeof openRenameMapEditor === "function") {
+        void openRenameMapEditor("bundles", { items, targetProfile: target, kind: "scripts" });
+      }
+    });
   }
 });

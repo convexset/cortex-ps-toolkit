@@ -184,8 +184,11 @@ async def api_platform_admin_biocs_delete_preview(request: Request) -> JSONRespo
         names = [str(item) for item in (body.get("names") or [])]
         if not profile or not names:
             raise ValueError("profile and names required")
-        result = await run_sync(plan_bioc_delete, profile, names)
-        return JSONResponse(result)
+        from ..content.operation_plan import wrap_delete_plan
+
+        legacy = await run_sync(plan_bioc_delete, profile, names)
+        plan = wrap_delete_plan(legacy, operation="platform_admin.biocs.delete")
+        return JSONResponse(plan)
     except (UnsupportedOperation, KeyError, ValueError) as exc:
         return error_response(exc, 400)
 
@@ -231,8 +234,11 @@ async def api_platform_admin_correlation_delete_preview(request: Request) -> JSO
         names = [str(item) for item in (body.get("names") or [])]
         if not profile or not names:
             raise ValueError("profile and names required")
-        result = await run_sync(plan_correlation_delete, profile, names)
-        return JSONResponse(result)
+        from ..content.operation_plan import wrap_delete_plan
+
+        legacy = await run_sync(plan_correlation_delete, profile, names)
+        plan = wrap_delete_plan(legacy, operation="platform_admin.correlation_rules.delete")
+        return JSONResponse(plan)
     except (UnsupportedOperation, KeyError, ValueError) as exc:
         return error_response(exc, 400)
 

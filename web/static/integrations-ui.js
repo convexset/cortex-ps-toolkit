@@ -631,16 +631,19 @@ async function deleteSelectedIntegrations() {
       }),
       "Checking integrations…",
     );
-    if (!plan.would_delete) {
-      alert(formatIntegrationsDeleteSummary(plan));
-      return;
-    }
-
-    const proceedDelete = await showConfirmDialog({
-      title: "Confirm delete",
-      message: formatIntegrationsDeleteSummary(plan),
-      proceedLabel: "Continue",
-    });
+    const proceedDelete =
+      typeof confirmDeletePlan === "function"
+        ? await confirmDeletePlan({
+            title: "Confirm delete",
+            preview: plan,
+            proceedLabel: "Continue",
+            itemLabel: "integration",
+          })
+        : await showConfirmDialog({
+            title: "Confirm delete",
+            message: formatIntegrationsDeleteSummary(plan),
+            proceedLabel: "Continue",
+          });
     if (!proceedDelete) return;
 
     const typed = await promptIntegrationsDeleteTypeConfirm(plan);

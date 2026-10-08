@@ -267,7 +267,10 @@ Update [`UI_AND_SERVER.md`](UI_AND_SERVER.md) icon table when implemented.
 ### Phase 2 — Copy modes: rename / shallow (2–3 weeks)
 
 - [x] Backend: `copy_mode`, `rename_suffix`, `rename_map` on lists, scripts, playbooks, design, bundle phases.
-- [ ] Backend: dedicated lightweight `name-check` endpoint (today: collision surfaced in copy preview plans).
+- [x] Backend: `POST /api/copy/name-check` (target cache collision probe for copy-as-new).
+- [x] Frontend: per-item `rename_map` editor + live name-check on copy rows.
+- [x] Delete previews emit `plan_version: 1`; UI uses `confirmDeletePlan` / `confirmOperation`.
+- [x] Refactor preview wrapped as operation plan; analysis panel uses unified confirm.
 - [x] Backend: shallow multi-playbook preview + execute (binding table in bundle + playbook shallow copy).
 - [x] Frontend: copy mode controls + suffix via `appendCopyModeControls` (live name-check API still open).
 - [x] Deep copy: `copy_as_new` upload names in `copy_components` (per-component rename map in analysis UI still open).

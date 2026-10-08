@@ -1003,16 +1003,19 @@ async function deleteSelectedLists() {
       "Checking lists…",
     );
 
-    if (!plan.would_delete) {
-      alert(formatDeleteConfirmSummary(plan));
-      return;
-    }
-
-    const proceedDelete = await showConfirmDialog({
-      title: "Confirm delete",
-      message: formatDeleteConfirmSummary(plan),
-      proceedLabel: "Continue",
-    });
+    const proceedDelete =
+      typeof confirmDeletePlan === "function"
+        ? await confirmDeletePlan({
+            title: "Confirm delete",
+            preview: plan,
+            proceedLabel: "Continue",
+            itemLabel: "list",
+          })
+        : await showConfirmDialog({
+            title: "Confirm delete",
+            message: formatDeleteConfirmSummary(plan),
+            proceedLabel: "Continue",
+          });
     if (!proceedDelete) {
       return;
     }

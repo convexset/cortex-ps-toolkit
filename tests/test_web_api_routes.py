@@ -8,6 +8,7 @@ from cortex_ps_toolkit.server.app import create_app
 def test_refactor_routes_registered() -> None:
     app = create_app()
     paths = {getattr(route, "path", None) for route in app.routes}
+    assert "/api/copy/name-check" in paths
     assert "/api/playbooks/refactor/presets" in paths
     assert "/api/playbooks/refactor/workflow" in paths
     assert "/api/playbooks/refactor/preview" in paths

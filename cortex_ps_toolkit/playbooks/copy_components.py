@@ -464,7 +464,8 @@ def _upload_playbook_item(
     script_id_remap: dict[str, str],
     playbook_id_remap: dict[str, str],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], Optional[dict[str, str]]]:
-    name = str(item.get("name") or pb_id)
+    source_name = str(item.get("name") or pb_id)
+    name = source_name
     action = item.get("action")
     if action == "copy_as_new":
         name = effective_upload_name(item, fallback=name)
@@ -502,7 +503,12 @@ def _upload_playbook_item(
     )
     saved_name = str(saved.get("name") or name)
     remap_update = (
-        {"source_id": pb_id, "target_id": saved_id, "name": saved_name}
+        {
+            "source_id": pb_id,
+            "target_id": saved_id,
+            "name": saved_name,
+            "source_name": source_name,
+        }
         if saved_id
         else None
     )
@@ -532,9 +538,12 @@ def _apply_playbook_remap_updates(
         saved_id = str(update.get("target_id") or "")
         saved_name = str(update.get("name") or "")
         source_id = str(update.get("source_id") or "")
+        source_name = str(update.get("source_name") or "")
         if not saved_id or not saved_name or not source_id:
             continue
         playbook_name_to_id[saved_name] = saved_id
+        if source_name and source_name != saved_name:
+            playbook_name_to_id[source_name] = saved_id
         playbook_id_to_name[saved_id] = saved_name
         register_playbook_remap_entry(
             playbook_id_remap,

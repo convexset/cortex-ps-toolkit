@@ -3411,3 +3411,19 @@ button.danger:disabled {
 .link-btn.danger {
   color: #e07070;
 }
+
+.copy-rename-map-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.copy-name-check-msg.rename-map-collision {
+  color: var(--warning, #e5c07b);
+}
+
+.rename-map-table input.rename-map-input {
+  width: 100%;
+  max-width: 280px;
+}

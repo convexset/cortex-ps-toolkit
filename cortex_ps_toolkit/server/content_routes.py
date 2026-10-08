@@ -146,7 +146,10 @@ def make_delete_preview_handler(
     plan_delete: Callable[[str, list[str]], dict[str, Any]],
     *,
     ids_key: str,
+    operation: str,
 ) -> Callable[[Request], JSONResponse]:
+    from ..content.operation_plan import wrap_delete_plan
+
     async def handler(request: Request) -> JSONResponse:
         try:
             body = await read_json(request)
@@ -154,7 +157,8 @@ def make_delete_preview_handler(
             item_ids = [str(item) for item in (body.get(ids_key) or [])]
             if not profile or not item_ids:
                 raise ValueError(f"profile and {ids_key} required")
-            plan = await run_sync(plan_delete, profile, item_ids)
+            legacy = await run_sync(plan_delete, profile, item_ids)
+            plan = wrap_delete_plan(legacy, operation=operation)
             return JSONResponse(plan)
         except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
             status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404

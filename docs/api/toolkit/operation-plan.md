@@ -32,8 +32,18 @@ Request body (all copy preview/execute routes):
 | `rename_suffix` | Applied to selected items in `copy_as_new` mode (default `_copy`) |
 | `rename_map` | Optional `{ source_id: new_name }` overrides |
 
+## Delete plans
+
+Delete preview routes wrap the same envelope with `operation` ending in `.delete` and `summary` keys `delete`, `blocked`, `skip` (instead of create/update). `would_delete` indicates whether execute will attempt removals.
+
+## Name check (copy-as-new helper)
+
+`POST /api/copy/name-check` — body `{ target_profile, kind, proposals[] }` or `{ target_profile, kind, items[], copy_mode, rename_suffix, rename_map? }`. Returns `{ checks: [{ key, source_name, proposed_name, exists, target_id }], collision_count, all_available }`.
+
 ## Endpoints emitting `plan_version: 1`
 
+- `POST /api/lists/delete/preview` (and scripts, playbooks, integrations, design-content, platform-admin delete previews)
+- `POST /api/playbooks/refactor/preview`
 - `POST /api/lists/copy/preview`
 - `POST /api/scripts/copy/preview`
 - `POST /api/playbooks/copy/preview`

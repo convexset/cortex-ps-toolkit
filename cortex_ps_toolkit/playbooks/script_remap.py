@@ -26,7 +26,12 @@ def build_script_id_remap(
         result = results_by_id.get(source_id) or {}
         target_id = str(result.get("target_script_id") or item.get("target_id") or "")
         if not target_id:
-            name = str(item.get("name") or "")
+            name = str(
+                result.get("name")
+                or item.get("proposed_name")
+                or item.get("name")
+                or "",
+            )
             entry = find_script_in_index(resolved_target, name=name) if name else None
             target_id = str(entry.get("id") or "") if entry else ""
         if target_id:

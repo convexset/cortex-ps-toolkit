@@ -1,6 +1,19 @@
 /** Shared operation plan confirm + copy mode controls. */
 
+function isDeletePlan(plan) {
+  return String(plan?.operation || "").includes(".delete");
+}
+
 function planCounts(plan) {
+  if (plan.summary?.delete !== undefined) {
+    return {
+      total: plan.summary.total ?? 0,
+      copy: plan.summary.delete ?? 0,
+      update: 0,
+      skip: plan.summary.skip ?? 0,
+      conflict: plan.summary.blocked ?? plan.summary.abort ?? 0,
+    };
+  }
   if (plan.summary) {
     return {
       total: plan.summary.total ?? 0,
@@ -158,17 +171,32 @@ function normalizeConfirmPlan(
 
 function renderOperationPlan(plan, { itemLabel = "item" } = {}) {
   const c = planCounts(plan);
+  const deletePlan = isDeletePlan(plan);
   const parts = [];
   parts.push(`<div class="op-plan-summary">`);
-  parts.push(`<p><strong>${escapeHtml(plan.operation || "copy")}</strong> · ${escapeHtml(plan.source_profile)} → ${escapeHtml(plan.target_profile)}</p>`);
+  if (deletePlan) {
+    parts.push(
+      `<p><strong>${escapeHtml(plan.operation || "delete")}</strong> · profile ${escapeHtml(plan.profile || plan.source_profile || "")}</p>`,
+    );
+  } else {
+    parts.push(
+      `<p><strong>${escapeHtml(plan.operation || "copy")}</strong> · ${escapeHtml(plan.source_profile)} → ${escapeHtml(plan.target_profile)}</p>`,
+    );
+  }
   if (plan.mode_description) {
     parts.push(`<p class="op-plan-mode">${escapeHtml(plan.mode_description)}</p>`);
   }
-  parts.push(
-    `<p class="meta">Create ${c.copy}, update ${c.update}, skip ${c.skip}` +
-      (c.conflict ? `, blocked ${c.conflict}` : "") +
-      ` · ${c.total} ${escapeHtml(itemLabel)}(s)</p>`,
-  );
+  if (deletePlan) {
+    parts.push(
+      `<p class="meta">Delete ${c.copy}, blocked ${c.conflict}, skip ${c.skip} · ${c.total} ${escapeHtml(itemLabel)}(s)</p>`,
+    );
+  } else {
+    parts.push(
+      `<p class="meta">Create ${c.copy}, update ${c.update}, skip ${c.skip}` +
+        (c.conflict ? `, blocked ${c.conflict}` : "") +
+        ` · ${c.total} ${escapeHtml(itemLabel)}(s)</p>`,
+    );
+  }
   parts.push(`</div>`);
 
   if (plan.risks?.length) {
@@ -255,10 +283,37 @@ function renderOperationPlan(plan, { itemLabel = "item" } = {}) {
   }
 
   if (plan.would_abort) {
-    parts.push(`<p class="op-plan-abort"><strong>No upload will run.</strong> ${escapeHtml(plan.abort_reason || "Resolve conflicts or change copy mode.")}</p>`);
+    const msg = deletePlan
+      ? plan.abort_reason || "Nothing in this selection can be deleted."
+      : plan.abort_reason || "Resolve conflicts or change copy mode.";
+    parts.push(
+      `<p class="op-plan-abort"><strong>${deletePlan ? "Delete will not run." : "No upload will run."}</strong> ${escapeHtml(msg)}</p>`,
+    );
   }
 
   return parts.join("\n");
+}
+
+async function confirmDeletePlan({ title, preview, proceedLabel = "Delete", itemLabel = "item" }) {
+  const plan = preview?.plan_version
+    ? preview
+    : normalizeConfirmPlan(preview, { operation: "delete", itemLabel });
+  if (!plan.would_delete && plan.would_delete !== undefined) {
+    if (typeof showOutcomeDialog === "function") {
+      showOutcomeDialog({
+        title: "Nothing to delete",
+        message: plan.abort_reason || "No deletable items in selection.",
+        success: false,
+      });
+    } else {
+      alert(plan.abort_reason || "Nothing to delete.");
+    }
+    return false;
+  }
+  if (typeof confirmOperation === "function") {
+    return confirmOperation({ title, plan, proceedLabel, itemLabel });
+  }
+  return false;
 }
 
 async function confirmCopyPlan({
@@ -308,6 +363,23 @@ async function confirmOperation({ title, plan, proceedLabel = "Proceed", itemLab
   return proceed;
 }
 
+const cptkRenameMaps = window.__cptkRenameMaps || (window.__cptkRenameMaps = {});
+
+function readRenameMap(prefix) {
+  const stored = cptkRenameMaps[prefix];
+  if (!stored || typeof stored !== "object") return {};
+  return { ...stored };
+}
+
+function setRenameMap(prefix, map) {
+  cptkRenameMaps[prefix] = { ...map };
+  const statusEl = document.getElementById(`${prefix}-copy-rename-map-status`);
+  if (statusEl) {
+    const n = Object.keys(map || {}).length;
+    statusEl.textContent = n ? `${n} override(s)` : "";
+  }
+}
+
 function readCopyModeFromRow(prefix) {
   const selected = document.querySelector(`input[name="${prefix}-copy-mode"]:checked`);
   const mode = selected?.value || "skip";
@@ -316,11 +388,13 @@ function readCopyModeFromRow(prefix) {
   const overwrite = mode === "overwrite";
   const stop_on_conflict = mode === "stop_on_conflict";
   const postDiffEl = document.getElementById(`${prefix}-copy-post-diff`);
+  const rename_map = mode === "copy_as_new" ? readRenameMap(prefix) : {};
   return {
     copy_mode: mode === "stop_on_conflict" ? "skip" : mode,
     overwrite,
     stop_on_conflict,
     rename_suffix,
+    rename_map,
     post_copy_diff: postDiffEl?.checked ?? false,
   };
 }
@@ -328,14 +402,102 @@ function readCopyModeFromRow(prefix) {
 function bindCopyModeRadios(prefix) {
   const radios = document.querySelectorAll(`input[name="${prefix}-copy-mode"]`);
   const suffixWrap = document.getElementById(`${prefix}-copy-rename-suffix-wrap`);
+  const mapWrap = document.getElementById(`${prefix}-copy-rename-map-wrap`);
   const sync = () => {
     const mode = document.querySelector(`input[name="${prefix}-copy-mode"]:checked`)?.value;
-    if (suffixWrap) {
-      suffixWrap.classList.toggle("hidden", mode !== "copy_as_new");
-    }
+    const showRename = mode === "copy_as_new";
+    if (suffixWrap) suffixWrap.classList.toggle("hidden", !showRename);
+    if (mapWrap) mapWrap.classList.toggle("hidden", !showRename);
   };
   radios.forEach((el) => el.addEventListener("change", sync));
   sync();
+}
+
+async function openRenameMapEditor(prefix, { items = [], targetProfile = "", kind = "scripts", asset = null } = {}) {
+  if (!items.length) {
+    alert("Select items first, then edit per-item target names.");
+    return;
+  }
+  const suffixEl = document.getElementById(`${prefix}-copy-rename-suffix`);
+  const suffix = (suffixEl?.value || "_copy").trim();
+  const existing = readRenameMap(prefix);
+  const rows = items.map((item) => {
+    const key = String(item.id || item.key || item.name || "");
+    const source = String(item.name || key);
+    const defaultProposed = `${source}${suffix}`;
+    const proposed = existing[key] || defaultProposed;
+    return { key, source, proposed };
+  });
+  const lines = rows
+    .map(
+      (row) =>
+        `<tr data-key="${escapeHtml(row.key)}"><td>${escapeHtml(row.source)}</td>` +
+        `<td><input type="text" class="rename-map-input" value="${escapeHtml(row.proposed)}" size="28" /></td></tr>`,
+    )
+    .join("");
+  const html = `<p class="meta">Override target names for copy-as-new. Keys are tenant object ids.</p>
+    <table class="op-plan-table rename-map-table"><thead><tr><th>Source name</th><th>Target name</th></tr></thead><tbody>${lines}</tbody></table>
+    <p id="${prefix}-rename-map-check" class="meta rename-map-check-msg"></p>`;
+  const proceed = await showConfirmDialog({
+    title: "Per-item target names",
+    message: html,
+    proceedLabel: "Save overrides",
+    html: true,
+  });
+  if (!proceed) return;
+  const container = document.getElementById("confirm-dialog-message");
+  const map = {};
+  container?.querySelectorAll("tr[data-key]").forEach((tr) => {
+    const key = tr.getAttribute("data-key") || "";
+    const input = tr.querySelector(".rename-map-input");
+    const value = (input?.value || "").trim();
+    const source = rows.find((r) => r.key === key)?.source || "";
+    const defaultProposed = `${source}${suffix}`;
+    if (value && value !== defaultProposed) {
+      map[key] = value;
+    }
+  });
+  setRenameMap(prefix, map);
+  if (targetProfile && typeof scheduleCopyNameCheck === "function") {
+    scheduleCopyNameCheck(prefix, { targetProfile, kind, items, asset });
+  }
+}
+
+let cptkNameCheckTimers = {};
+
+function scheduleCopyNameCheck(prefix, { targetProfile, kind, items, asset = null }) {
+  if (!targetProfile || !items?.length) return;
+  clearTimeout(cptkNameCheckTimers[prefix]);
+  cptkNameCheckTimers[prefix] = setTimeout(() => {
+    void runCopyNameCheck(prefix, { targetProfile, kind, items, asset });
+  }, 400);
+}
+
+async function runCopyNameCheck(prefix, { targetProfile, kind, items, asset = null }) {
+  const modeFields = readCopyModeFromRow(prefix);
+  if (modeFields.copy_mode !== "copy_as_new") return;
+  const msgEl = document.getElementById(`${prefix}-copy-name-check-msg`);
+  try {
+    const body = {
+      target_profile: targetProfile,
+      kind,
+      items: items.map((row) => ({ id: row.id || row.key, name: row.name })),
+      copy_mode: "copy_as_new",
+      rename_suffix: modeFields.rename_suffix,
+      rename_map: modeFields.rename_map,
+    };
+    if (asset) body.asset = asset;
+    const result = await api("/api/copy/name-check", { method: "POST", body: JSON.stringify(body) });
+    const collisions = (result.checks || []).filter((c) => c.exists);
+    if (msgEl) {
+      msgEl.textContent = collisions.length
+        ? `⚠ ${collisions.length} proposed name(s) already on target: ${collisions.map((c) => c.proposed_name).join(", ")}`
+        : "✓ Proposed names available on target (cache)";
+      msgEl.classList.toggle("rename-map-collision", collisions.length > 0);
+    }
+  } catch (err) {
+    if (msgEl) msgEl.textContent = `Name check failed: ${err.message}`;
+  }
 }
 
 function fieldHelpIcon(tooltipText) {
@@ -391,6 +553,11 @@ function appendCopyModeControls(copyRowEl, prefix) {
         <input type="text" id="${prefix}-copy-rename-suffix" value="_copy" size="8" />
       </label>
     </span>
+    <span id="${prefix}-copy-rename-map-wrap" class="copy-rename-map-wrap hidden">
+      <button type="button" class="secondary compact" id="${prefix}-copy-rename-map-btn">Per-item names…</button>
+      <span id="${prefix}-copy-rename-map-status" class="meta rename-map-status"></span>
+      <span id="${prefix}-copy-name-check-msg" class="meta copy-name-check-msg"></span>
+    </span>
     <label class="checkbox copy-post-diff-label">
       <input type="checkbox" id="${prefix}-copy-post-diff" />
       Diff after copy ${helpPostDiff}
@@ -398,6 +565,13 @@ function appendCopyModeControls(copyRowEl, prefix) {
   copyRowEl.insertBefore(fieldset, copyRowEl.querySelector("button.primary"));
   bindFieldHelpIcons(fieldset);
   bindCopyModeRadios(prefix);
+  const suffixInput = document.getElementById(`${prefix}-copy-rename-suffix`);
+  suffixInput?.addEventListener("input", () => {
+    copyRowEl.dispatchEvent(new CustomEvent("cptk-copy-rename-changed", { bubbles: true }));
+  });
+  document.getElementById(`${prefix}-copy-rename-map-btn`)?.addEventListener("click", () => {
+    copyRowEl.dispatchEvent(new CustomEvent("cptk-open-rename-map", { bubbles: true }));
+  });
   const legacyOverwrite = document.getElementById(`${prefix}-copy-overwrite`) || document.getElementById("copy-overwrite");
   const legacyStop = document.getElementById(`${prefix}-copy-stop-on-conflict`) || document.getElementById("copy-stop-on-conflict");
   if (legacyOverwrite) legacyOverwrite.closest("label")?.classList.add("hidden");
@@ -406,7 +580,11 @@ function appendCopyModeControls(copyRowEl, prefix) {
 
 function mergeCopyPayload(base, prefix) {
   const modeFields = readCopyModeFromRow(prefix);
-  return { ...base, ...modeFields };
+  const payload = { ...base, ...modeFields };
+  if (!Object.keys(modeFields.rename_map || {}).length) {
+    delete payload.rename_map;
+  }
+  return payload;
 }
 
 window.normalizeConfirmPlan = normalizeConfirmPlan;
@@ -418,3 +596,10 @@ window.planCounts = planCounts;
 window.appendCopyModeControls = appendCopyModeControls;
 window.mergeCopyPayload = mergeCopyPayload;
 window.readCopyModeFromRow = readCopyModeFromRow;
+window.confirmDeletePlan = confirmDeletePlan;
+window.openRenameMapEditor = openRenameMapEditor;
+window.scheduleCopyNameCheck = scheduleCopyNameCheck;
+window.runCopyNameCheck = runCopyNameCheck;
+window.readRenameMap = readRenameMap;
+window.setRenameMap = setRenameMap;
+window.isDeletePlan = isDeletePlan;

@@ -200,6 +200,5 @@ Portable YAML reference tests use `tests/fixtures/portable_export/` (and fall ba
 
 ## Known gaps / roadmap
 
-- **`rename_map`** per-item overrides in the web UI (API/CLI support suffix and map on copy).
-- Deep **component copy** rebind when sub-playbooks/scripts are renamed (upload uses new names; binding maps updated on create).
-- Manual lab QA on multi-asset bundle copy with every copy mode + diff enabled.
+- Bundle **per-item rename map** in UI uses a single suffix default for mixed asset kinds (use List/Script/Playbook tools for kind-specific name-check).
+- Manual lab QA: see [`BUNDLE-LAB-QA.md`](BUNDLE-LAB-QA.md) + `tests/integration/test_bundle_copy_modes_lab.py`.

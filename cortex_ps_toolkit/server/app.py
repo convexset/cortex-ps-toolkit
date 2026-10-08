@@ -53,6 +53,8 @@ from . import design_content_api
 from . import bundles_api, object_setup_bundles_api
 from . import platform_admin_api
 from . import vault_api
+from . import name_check_api
+from ..content.operation_plan import wrap_delete_plan
 from .cache_api import (
     api_cache_status,
     api_portable_export_policy_get,
@@ -176,7 +178,8 @@ async def api_lists_delete_preview(request: Request) -> JSONResponse:
     try:
         body = await read_json(request)
         profile, list_ids = _parse_lists_delete_body(body)
-        plan = await run_sync(plan_lists_delete, profile, list_ids)
+        legacy = await run_sync(plan_lists_delete, profile, list_ids)
+        plan = wrap_delete_plan(legacy, operation="lists.delete")
         return JSONResponse(plan)
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError) as exc:
         status = 502 if isinstance(exc, TenantApiError) else 400 if isinstance(exc, UnsupportedOperation) else 404
@@ -519,6 +522,7 @@ def create_app() -> Starlette:
         Route("/api/lists/refresh", api_lists_refresh, methods=["POST"]),
         Route("/api/lists/delete/preview", api_lists_delete_preview, methods=["POST"]),
         Route("/api/lists/delete", api_lists_delete, methods=["POST"]),
+        Route("/api/copy/name-check", name_check_api.api_copy_name_check, methods=["POST"]),
         Route("/api/lists/copy/preview", api_lists_copy_preview, methods=["POST"]),
         Route("/api/lists/copy", api_lists_copy, methods=["POST"]),
         Route("/api/lists/{list_id}", lists_api.api_list_detail, methods=["GET"]),
@@ -619,7 +623,11 @@ def create_app() -> Starlette:
         ),
         Route(
             "/api/playbooks/delete/preview",
-            make_delete_preview_handler(plan_playbooks_delete, ids_key="playbook_ids"),
+            make_delete_preview_handler(
+                plan_playbooks_delete,
+                ids_key="playbook_ids",
+                operation="playbooks.delete",
+            ),
             methods=["POST"],
         ),
         Route(
@@ -654,7 +662,11 @@ def create_app() -> Starlette:
         ),
         Route(
             "/api/scripts/delete/preview",
-            make_delete_preview_handler(plan_scripts_delete, ids_key="script_ids"),
+            make_delete_preview_handler(
+                plan_scripts_delete,
+                ids_key="script_ids",
+                operation="scripts.delete",
+            ),
             methods=["POST"],
         ),
         Route(
@@ -725,7 +737,11 @@ def create_app() -> Starlette:
         ),
         Route(
             "/api/integrations/delete/preview",
-            make_delete_preview_handler(plan_integrations_delete, ids_key="integration_ids"),
+            make_delete_preview_handler(
+                plan_integrations_delete,
+                ids_key="integration_ids",
+                operation="integrations.delete",
+            ),
             methods=["POST"],
         ),
         Route(

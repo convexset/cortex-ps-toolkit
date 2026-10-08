@@ -220,6 +220,9 @@ function initObjectSetupUi() {
       }
       fields.copy_mode = mode.copy_mode;
       fields.rename_suffix = mode.rename_suffix;
+      if (mode.rename_map && Object.keys(mode.rename_map).length) {
+        fields.rename_map = mode.rename_map;
+      }
       return fields;
     }
     return {
@@ -259,6 +262,7 @@ function initObjectSetupUi() {
       name_suffix: copyFields.name_suffix,
       copy_mode: copyFields.copy_mode,
       rename_suffix: copyFields.rename_suffix,
+      rename_map: copyFields.rename_map,
     };
   }
 
@@ -707,13 +711,21 @@ function initObjectSetupUi() {
         method: "POST",
         body: JSON.stringify({ profile, names }),
       });
-      const proceed = await showConfirmDialog({
-        title: "Delete correlation rules",
-        message: typeof formatPreviewEntries === "function"
-          ? formatPreviewEntries(preview, { title: "Delete correlation rules", itemLabel: "rule" })
-          : JSON.stringify(preview.entries, null, 2),
-        proceedLabel: "Delete",
-      });
+      const proceed =
+        typeof confirmDeletePlan === "function"
+          ? await confirmDeletePlan({
+              title: "Delete correlation rules",
+              preview,
+              proceedLabel: "Delete",
+              itemLabel: "rule",
+            })
+          : await showConfirmDialog({
+              title: "Delete correlation rules",
+              message: typeof formatPreviewEntries === "function"
+                ? formatPreviewEntries(preview, { title: "Delete correlation rules", itemLabel: "rule" })
+                : JSON.stringify(preview.entries, null, 2),
+              proceedLabel: "Delete",
+            });
       if (!proceed) return;
       const deletePayload = { profile, names };
       try {
@@ -753,13 +765,21 @@ function initObjectSetupUi() {
       method: "POST",
       body: JSON.stringify({ profile, item_ids: ids }),
     });
-    const proceed = await showConfirmDialog({
-      title: "Delete object setup content",
-      message: typeof formatPreviewEntries === "function"
-        ? formatPreviewEntries(preview, { title: "Delete object setup content", itemLabel: activeAsset })
-        : JSON.stringify(preview.entries, null, 2),
-      proceedLabel: "Delete",
-    });
+    const proceed =
+      typeof confirmDeletePlan === "function"
+        ? await confirmDeletePlan({
+            title: "Delete object setup content",
+            preview,
+            proceedLabel: "Delete",
+            itemLabel: activeAsset,
+          })
+        : await showConfirmDialog({
+            title: "Delete object setup content",
+            message: typeof formatPreviewEntries === "function"
+              ? formatPreviewEntries(preview, { title: "Delete object setup content", itemLabel: activeAsset })
+              : JSON.stringify(preview.entries, null, 2),
+            proceedLabel: "Delete",
+          });
     if (!proceed) return;
     const deletePayload = { profile, asset: activeAsset, item_ids: ids };
     try {
@@ -885,6 +905,35 @@ function initObjectSetupUi() {
     const copyRow = document.getElementById("object-setup-copy-row");
     if (copyRow && typeof appendCopyModeControls === "function") {
       appendCopyModeControls(copyRow, "object-setup");
+      copyRow.addEventListener("cptk-open-rename-map", () => {
+        const target = document.getElementById("object-setup-copy-target")?.value;
+        const rows = getSelectedRows().map((row) => ({
+          id: isAdminAsset() ? row.name || row.id : row.id,
+          name: row.name || row.id,
+        }));
+        if (typeof openRenameMapEditor === "function") {
+          void openRenameMapEditor("object-setup", {
+            items: rows,
+            targetProfile: target,
+            kind: "design",
+            asset: activeAsset,
+          });
+        }
+      });
+      copyRow.addEventListener("cptk-copy-rename-changed", () => {
+        const target = document.getElementById("object-setup-copy-target")?.value;
+        if (typeof scheduleCopyNameCheck === "function") {
+          scheduleCopyNameCheck("object-setup", {
+            targetProfile: target,
+            kind: "design",
+            asset: activeAsset,
+            items: getSelectedRows().map((row) => ({
+              id: isAdminAsset() ? row.name || row.id : row.id,
+              name: row.name || row.id,
+            })),
+          });
+        }
+      });
     }
     if (typeof bindGridSelectionToolbar === "function") {
       bindGridSelectionToolbar({

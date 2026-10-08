@@ -3850,49 +3850,35 @@ async function runRefactorForPanel(details, data) {
     return;
   }
 
-  let existingTargets = [];
+  let refactorPlan;
   try {
-    const plan = await api("/api/playbooks/refactor/preview", {
+    refactorPlan = await api("/api/playbooks/refactor/preview", {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    existingTargets = Array.isArray(plan.existing_targets) ? plan.existing_targets : [];
   } catch (err) {
     alert(`Could not preflight refactor: ${err.message}`);
     return;
   }
 
+  const existingTargets = Array.isArray(refactorPlan.existing_targets) ? refactorPlan.existing_targets : [];
   const overwriteRequested = payload.overwrite_existing !== false;
-  const summary = [
-    "Run refactor on live tenant?",
-    "",
-    `Playbook: ${data.root_playbook.name}`,
-    `Profile: ${data.profile}`,
-    `Leaf tasks: ${payload.leaf_tasks.join(", ") || "(none)"}`,
-    `Clusters: ${payload.clusters.join(", ") || "(none)"}`,
-    `Post updates: ${payload.post_task_updates.join("; ") || "(none)"}`,
-    "",
-    existingTargets.length
-      ? `Warning: ${existingTargets.length} existing tenant playbook(s) match planned output names (listed below).`
-      : "",
-    formatRefactorExistingTargets(existingTargets),
-    "",
-    overwriteRequested
-      ? existingTargets.length
-        ? "Overwrite is enabled — you must confirm replacement in the next step."
-        : "Overwrite is enabled for matching target names (none found on this tenant)."
-      : "Overwrite is off — matching names will be reused without replacing content.",
-    "",
-    "Progress streams over WebSocket when connected (falls back to HTTP).",
-    "The source playbook is never modified.",
-  ]
-    .filter(Boolean)
-    .join("\n");
 
   const proceed =
-    typeof showConfirmDialog === "function"
-      ? await showConfirmDialog({ title: "Confirm refactor", message: summary, proceedLabel: "Run refactor" })
-      : window.confirm(summary);
+    typeof confirmOperation === "function" && refactorPlan.plan_version
+      ? await confirmOperation({
+          title: "Confirm refactor",
+          plan: refactorPlan,
+          proceedLabel: "Run refactor",
+          itemLabel: "step",
+        })
+      : typeof showConfirmDialog === "function"
+        ? await showConfirmDialog({
+            title: "Confirm refactor",
+            message: `Run refactor on ${data.root_playbook.name}?`,
+            proceedLabel: "Run refactor",
+          })
+        : window.confirm("Run refactor?");
   if (!proceed) {
     return;
   }

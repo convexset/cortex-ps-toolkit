@@ -160,7 +160,10 @@ async def api_design_content_delete_preview(request: Request) -> JSONResponse:
         item_ids = [str(item) for item in (body.get("item_ids") or [])]
         if not profile or not item_ids:
             raise ValueError("profile and item_ids required")
-        plan = await run_sync(plan_asset_delete, profile, asset, item_ids)
+        from ..content.operation_plan import wrap_delete_plan
+
+        legacy = await run_sync(plan_asset_delete, profile, asset, item_ids)
+        plan = wrap_delete_plan(legacy, operation=f"design_content.{asset}.delete")
         return JSONResponse(plan)
     except (UnsupportedOperation, KeyError, ValueError) as exc:
         return error_response(exc, 400)

@@ -115,7 +115,9 @@ async def api_playbooks_refactor_preview(request: Request) -> JSONResponse:
             parent_copy_name=_optional_str(body, "parent_copy_name"),
             force=bool(body.get("force")),
         )
-        return JSONResponse(plan)
+        from ..content.operation_plan import wrap_refactor_plan
+
+        return JSONResponse(wrap_refactor_plan(plan))
     except (TenantApiError, UnsupportedOperation, KeyError, ValueError, RuntimeError) as exc:
         status = _status_for_exc(exc)
         return error_response(exc, status)

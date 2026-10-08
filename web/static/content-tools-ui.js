@@ -331,19 +331,21 @@ function initContentTools(spec) {
         `Checking ${resource}…`,
       );
 
-      if (!plan.would_delete) {
-        alert(formatDeleteConfirmSummary(plan));
-        return;
-      }
-
       const proceedDelete =
-        typeof showConfirmDialog === "function"
-          ? await showConfirmDialog({
+        typeof confirmDeletePlan === "function"
+          ? await confirmDeletePlan({
               title: "Confirm delete",
-              message: formatDeleteConfirmSummary(plan),
+              preview: plan,
               proceedLabel: "Continue",
+              itemLabel,
             })
-          : window.confirm(formatDeleteConfirmSummary(plan));
+          : typeof showConfirmDialog === "function"
+            ? await showConfirmDialog({
+                title: "Confirm delete",
+                message: formatDeleteConfirmSummary(plan),
+                proceedLabel: "Continue",
+              })
+            : window.confirm(formatDeleteConfirmSummary(plan));
       if (!proceedDelete) return;
 
       const typed = await promptDeleteTypeConfirm(plan);
@@ -593,6 +595,28 @@ function initContentTools(spec) {
     const copyRow = document.getElementById(copyBtnId)?.closest(".copy-row");
     if (copyRow && typeof appendCopyModeControls === "function") {
       appendCopyModeControls(copyRow, copyModePrefix);
+      copyRow.addEventListener("cptk-open-rename-map", () => {
+        const target = document.getElementById(copyTargetId)?.value;
+        if (typeof openRenameMapEditor === "function") {
+          void openRenameMapEditor(copyModePrefix, {
+            items: getSelectedRows(),
+            targetProfile: target,
+            kind: resource === "playbooks" ? "playbooks" : resource,
+          });
+        }
+      });
+      const scheduleNameCheck = () => {
+        const target = document.getElementById(copyTargetId)?.value;
+        if (typeof scheduleCopyNameCheck === "function") {
+          scheduleCopyNameCheck(copyModePrefix, {
+            targetProfile: target,
+            kind: resource === "playbooks" ? "playbooks" : resource,
+            items: getSelectedRows(),
+          });
+        }
+      };
+      copyRow.addEventListener("cptk-copy-rename-changed", scheduleNameCheck);
+      document.getElementById(copyTargetId)?.addEventListener("change", scheduleNameCheck);
     }
     document.getElementById(deleteBtnId).addEventListener("click", deleteSelected);
     const addBundleBtnId = `${resource}-add-to-bundle`;
